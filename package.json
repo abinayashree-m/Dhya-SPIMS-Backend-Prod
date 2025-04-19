@@ -8,8 +8,8 @@
     "dev": "nodemon index.js",
     "start": "node index.js",
     "prisma": "prisma",
-    "postinstall": "prisma generate",
-    "seed": "psql -U dharsankumar -d spims_db -f prisma/seed.sql"
+    "build": "echo 'skip'",
+    "postinstall": "npx prisma generate"
   },
   "keywords": [],
   "author": "",
