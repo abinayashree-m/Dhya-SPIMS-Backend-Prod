@@ -1,0 +1,222 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model fibre_categories {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  description String?
+  fibres      fibres[] // ⬅️ One-to-many relationship
+  created_at  DateTime @default(now())
+  updated_at  DateTime @default(now())
+}
+
+model fibres {
+  id          String            @id @default(uuid()) @db.Uuid
+  fibre_name  String
+  fibre_code  String
+  stock_kg    Decimal           @db.Decimal(10, 2)
+  description String?
+  category_id String?           @db.Uuid
+  category    fibre_categories? @relation(fields: [category_id], references: [id], onDelete: SetNull)
+
+  blend_fibres blend_fibres[]
+  shade_fibres shade_fibres[]
+
+  created_at          DateTime?             @default(now()) @db.Timestamp(6)
+  updated_at          DateTime?             @default(now()) @db.Timestamp(6)
+  fiber_usage_history fiber_usage_history[]
+  fibre_usage_logs    fibre_usage_logs[]
+}
+
+model blend_fibres {
+  id         String @id @default(uuid()) @db.Uuid
+  blend_id   String @db.Uuid
+  fibre_id   String @db.Uuid
+  percentage Int
+
+  blends blends @relation(fields: [blend_id], references: [id], onDelete: Cascade)
+  fibres fibres @relation(fields: [fibre_id], references: [id], onDelete: Cascade)
+
+  @@unique([blend_id, fibre_id])
+}
+
+model blends {
+  id           String         @id @default(uuid()) @db.Uuid
+  blend_code   String?
+  description  String?
+  blend_fibres blend_fibres[]
+  created_at   DateTime?      @default(now()) @db.Timestamp(6)
+  updated_at   DateTime?      @default(now()) @db.Timestamp(6)
+}
+
+model shades {
+  id           String         @id @default(uuid()) @db.Uuid
+  shade_code   String
+  shade_name   String
+  percentage   String?
+  description  String?
+  shade_fibres shade_fibres[] // ✅ NEW: relation to fibre compositions
+  created_at   DateTime?      @default(now()) @db.Timestamp(6)
+  updated_at   DateTime?      @default(now()) @db.Timestamp(6)
+
+  orders orders[] // ✅ Add this to link orders
+}
+
+model shade_fibres {
+  id         String  @id @default(uuid()) @db.Uuid
+  shade_id   String  @db.Uuid
+  fibre_id   String  @db.Uuid
+  percentage Decimal @db.Decimal(5, 2) // ✅ Allow up to 2 decimal places
+
+  shade shades @relation(fields: [shade_id], references: [id], onDelete: Cascade)
+  fibre fibres @relation(fields: [fibre_id], references: [id], onDelete: Cascade)
+
+  @@unique([shade_id, fibre_id]) // ✅ Prevent duplicate fibre usage in a shade
+}
+
+model subscriptions {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenant_id  String?   @db.Uuid
+  plan_type  String?
+  start_date DateTime? @db.Date
+  end_date   DateTime? @db.Date
+  is_active  Boolean?  @default(true)
+  tenants    tenants?  @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model tenants {
+  id         String    @id @default(uuid()) @db.Uuid
+  name       String
+  domain     String?
+  plan       String?   @default("free")
+  is_active  Boolean?  @default(true)
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+  updated_at DateTime? @default(now()) @db.Timestamp(6)
+
+  subscriptions subscriptions[]
+  users         users[]
+  orders        orders[]
+  productions   productions[]
+}
+
+model users {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenant_id     String?   @db.Uuid
+  name          String?
+  email         String    @unique
+  password_hash String
+  role          String?
+  is_active     Boolean?  @default(true)
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+  updated_at    DateTime? @default(now()) @db.Timestamp(6)
+
+  tenants     tenants?      @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  productions productions[]
+}
+
+model orders {
+  id           String @id @default(uuid()) @db.Uuid
+  order_number String @unique
+  buyer_id     String @db.Uuid
+  buyer        buyers @relation(fields: [buyer_id], references: [id], onDelete: Cascade)
+
+  shade_id String @db.Uuid
+  shade    shades @relation(fields: [shade_id], references: [id], onDelete: Cascade)
+
+  tenant_id String  @db.Uuid // ✅ Add this
+  tenant    tenants @relation(fields: [tenant_id], references: [id])
+
+  delivery_date DateTime
+  quantity_kg   Decimal  @db.Decimal(10, 2)
+  status        String   @default("pending") // "pending", "in_progress", "completed"
+  created_by    String
+
+  realisation Decimal? @db.Decimal(5, 2) // ✅ Optional field for realisation %
+
+  created_at  DateTime      @default(now())
+  updated_at  DateTime      @default(now())
+  productions productions[]
+}
+
+model buyers {
+  id         String   @id @default(uuid()) @db.Uuid
+  name       String
+  contact    String?
+  email      String?
+  address    String?
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now())
+
+  orders orders[]
+}
+
+model fiber_usage_history {
+  id       String   @id @default(uuid()) @db.Uuid
+  fibre_id String   @db.Uuid
+  date     DateTime
+  usedKg   Decimal  @db.Decimal(10, 2)
+
+  fibre fibres @relation(fields: [fibre_id], references: [id])
+}
+
+model fibre_usage_logs {
+  id       String   @id @default(uuid()) @db.Uuid
+  fibre_id String   @db.Uuid // ✅ fix here: use @db.Uuid
+  used_kg  Decimal  @db.Decimal(10, 2)
+  used_on  DateTime @default(now())
+
+  fibre fibres @relation(fields: [fibre_id], references: [id], onDelete: Cascade)
+
+  @@index([fibre_id])
+}
+
+model productions {
+  id            String   @id @default(uuid()) @db.Uuid
+  date          DateTime @default(now())
+  section       String
+  machine       String
+  shift         String
+  count         String?
+  hank          Decimal? @db.Decimal(6, 2)
+  production_kg Decimal  @db.Decimal(10, 2)
+  required_qty  Decimal  @db.Decimal(10, 2)
+  remarks       String?
+  status        String   @default("draft")
+
+  // ✅ Relational mappings
+  tenant_id String  @db.Uuid
+  tenant    tenants @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+
+  order_id String @db.Uuid
+  order    orders @relation(fields: [order_id], references: [id], onDelete: Cascade)
+
+  user_id String @db.Uuid
+  user    users  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  created_at      DateTime          @default(now())
+  updated_at      DateTime          @default(now())
+  production_logs production_logs[]
+}
+
+model production_logs {
+  id            String      @id @default(uuid()) @db.Uuid
+  production_id String      @db.Uuid
+  production    productions @relation(fields: [production_id], references: [id], onDelete: Cascade)
+
+  log_date      DateTime @default(now())
+  shift         String
+  machine       String
+  section       String
+  operator      String?
+  production_kg Decimal  @db.Decimal(10, 2)
+  remarks       String?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now())
+}
