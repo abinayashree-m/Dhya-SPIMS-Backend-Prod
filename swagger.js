@@ -11,7 +11,7 @@ const options = {
     },
     servers: [
       {
-        url: process.env.BASE_URL || 'http://localhost:5001', // ✅ fallback for local
+        url: process.env.BASE_URL || 'http://localhost:5001',
       },
     ],
     components: {
@@ -22,14 +22,46 @@ const options = {
           bearerFormat: 'JWT',
         },
       },
-    },
-    security: [
-      {
-        bearerAuth: [],
+      schemas: {
+        Settings: {
+          type: 'object',
+          properties: {
+            theme: { type: 'string', example: 'auto' },
+            locale: { type: 'string', example: 'en' },
+            email_notifications: { type: 'boolean', example: true },
+            sms_alerts: { type: 'boolean', example: false },
+            production_reminders: { type: 'boolean', example: true },
+            plan_type: { type: 'string', example: 'premium' },
+            billing_start_date: { type: 'string', format: 'date-time' },
+            billing_end_date: { type: 'string', format: 'date-time' },
+            integration_ai: { type: 'boolean', example: true },
+            integration_tally: { type: 'boolean', example: false },
+            feature_toggles: {
+              type: 'object',
+              additionalProperties: true,
+              example: { fiberStockChart: true, advancedReports: false },
+            },
+          },
+        },
+        UserSettings: {
+          type: 'object',
+          properties: {
+            theme: { type: 'string', example: 'light' },
+            locale: { type: 'string', example: 'en' },
+            email_notifications: { type: 'boolean', example: true },
+            sms_alerts: { type: 'boolean', example: false },
+            feature_toggles: {
+              type: 'object',
+              additionalProperties: true,
+              example: { showDashboardTips: true, compactMode: false },
+            },
+          },
+        },
       },
-    ],
+    },
+    security: [{ bearerAuth: [] }],
   },
-  apis: ['./routes/*.js'], // ✅ Path to your route files
+  apis: ['./routes/*.js'],
 };
 
 const swaggerSpec = swaggerJSDoc(options);

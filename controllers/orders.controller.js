@@ -3,6 +3,8 @@ const fs = require('fs');
 const orderService = require('../services/orders.service');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const { sendOrderConfirmationEmail } = require('../utils/email');
+
 
 const isUUID = (value) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -30,7 +32,8 @@ const bulkImportOrders = async (req, res) => {
         delivery_date,
         status = 'pending',
         tenant_id,
-        realisation
+        realisation,
+        count
       } = row;
 
       if (!order_number || !buyer_id || !shade_id || !tenant_id || !quantity_kg || !delivery_date) {
@@ -85,6 +88,7 @@ const bulkImportOrders = async (req, res) => {
           status,
           tenant_id,
           realisation: realisation ? parseFloat(realisation) : undefined,
+          count: count ? parseInt(count) : undefined
         });
 
         created.push(order);
@@ -108,7 +112,7 @@ const bulkImportOrders = async (req, res) => {
 };
 
 const getAllOrders = async (req, res) => {
-  const tenant_id = req.user?.tenant_id;
+  const tenant_id = req.user?.tenantId;
   if (!tenant_id) return res.status(401).json({ error: 'Unauthorized: tenant_id not found in token' });
 
   try {
@@ -134,6 +138,27 @@ const getOrderById = async (req, res) => {
 const createOrder = async (req, res) => {
   try {
     const order = await orderService.createOrder(req.body);
+
+    // 🔁 Fetch buyer info for email
+    const buyer = await prisma.buyers.findUnique({ where: { id: order.buyer_id } });
+
+    // ✉️ Trigger email if email exists
+    if (buyer?.email) {
+      await sendOrderConfirmationEmail({
+        to: buyer.email,
+        buyerName: buyer.name,
+        orderNumber: order.order_number,
+        count: order.count,
+        quantity: order.quantity_kg,
+        tenant_id: order.tenant_id,
+        shadeCode: order.shade?.shade_code ?? '-', // Make sure shade is populated
+        orderDate: order.created_at,
+        deliveryDate: order.delivery_date,
+        cc: ['dharsan@dhya.in'],
+        reply_to: ['support@dhya.in'],
+      });
+    }
+
     res.status(201).json(order);
   } catch (err) {
     console.error('Error creating order:', err);

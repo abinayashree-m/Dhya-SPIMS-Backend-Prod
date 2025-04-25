@@ -56,7 +56,7 @@ exports.createOrder = async (data) => {
     throw new Error('Order number already exists (race condition)');
   }
 
-  return await prisma.orders.create({
+  const createdOrder = await prisma.orders.create({
     data: {
       ...rest,
       buyer_id,
@@ -65,10 +65,21 @@ exports.createOrder = async (data) => {
       delivery_date: new Date(data.delivery_date),
       status: data.status || 'pending',
       realisation: realisation ? new Decimal(realisation) : undefined,
+      count: data.count !== undefined ? parseInt(data.count) : undefined,
     },
   });
-};
 
+  // ✅ Fetch order again with shade and buyer included
+  const fullOrder = await prisma.orders.findUnique({
+    where: { id: createdOrder.id },
+    include: {
+      shade: true,
+      buyer: true,
+    },
+  });
+
+  return fullOrder;
+};
 // 4. Update full order by ID
 exports.updateOrder = async (id, data) => {
   const updateData = { ...data };
@@ -83,6 +94,10 @@ exports.updateOrder = async (id, data) => {
     }
   }
 
+  if (data.count !== undefined) {
+    updateData.count = parseInt(data.count);
+  }
+  
   return await prisma.orders.update({
     where: { id },
     data: updateData,

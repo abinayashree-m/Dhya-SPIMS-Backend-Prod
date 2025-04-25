@@ -11,27 +11,25 @@ model fibre_categories {
   id          String   @id @default(uuid()) @db.Uuid
   name        String   @unique
   description String?
-  fibres      fibres[] // ⬅️ One-to-many relationship
+  fibres      fibres[]
   created_at  DateTime @default(now())
   updated_at  DateTime @default(now())
 }
 
 model fibres {
-  id          String            @id @default(uuid()) @db.Uuid
-  fibre_name  String
-  fibre_code  String
-  stock_kg    Decimal           @db.Decimal(10, 2)
-  description String?
-  category_id String?           @db.Uuid
-  category    fibre_categories? @relation(fields: [category_id], references: [id], onDelete: SetNull)
-
-  blend_fibres blend_fibres[]
-  shade_fibres shade_fibres[]
-
-  created_at          DateTime?             @default(now()) @db.Timestamp(6)
-  updated_at          DateTime?             @default(now()) @db.Timestamp(6)
+  id                  String                @id @default(uuid()) @db.Uuid
+  fibre_name          String
+  fibre_code          String
+  stock_kg            Decimal               @db.Decimal(10, 2)
+  description         String?
+  category_id         String?               @db.Uuid
+  category            fibre_categories?     @relation(fields: [category_id], references: [id], onDelete: SetNull)
+  blend_fibres        blend_fibres[]
+  shade_fibres        shade_fibres[]
   fiber_usage_history fiber_usage_history[]
   fibre_usage_logs    fibre_usage_logs[]
+  created_at          DateTime              @default(now()) @db.Timestamp(6)
+  updated_at          DateTime              @default(now()) @db.Timestamp(6)
 }
 
 model blend_fibres {
@@ -39,9 +37,8 @@ model blend_fibres {
   blend_id   String @db.Uuid
   fibre_id   String @db.Uuid
   percentage Int
-
-  blends blends @relation(fields: [blend_id], references: [id], onDelete: Cascade)
-  fibres fibres @relation(fields: [fibre_id], references: [id], onDelete: Cascade)
+  blends     blends @relation(fields: [blend_id], references: [id], onDelete: Cascade)
+  fibres     fibres @relation(fields: [fibre_id], references: [id], onDelete: Cascade)
 
   @@unique([blend_id, fibre_id])
 }
@@ -61,23 +58,37 @@ model shades {
   shade_name   String
   percentage   String?
   description  String?
-  shade_fibres shade_fibres[] // ✅ NEW: relation to fibre compositions
+  shade_fibres shade_fibres[]
+  orders       orders[]
   created_at   DateTime?      @default(now()) @db.Timestamp(6)
   updated_at   DateTime?      @default(now()) @db.Timestamp(6)
-
-  orders orders[] // ✅ Add this to link orders
 }
 
 model shade_fibres {
   id         String  @id @default(uuid()) @db.Uuid
   shade_id   String  @db.Uuid
   fibre_id   String  @db.Uuid
-  percentage Decimal @db.Decimal(5, 2) // ✅ Allow up to 2 decimal places
+  percentage Decimal @db.Decimal(5, 2)
+  shade      shades  @relation(fields: [shade_id], references: [id], onDelete: Cascade)
+  fibre      fibres  @relation(fields: [fibre_id], references: [id], onDelete: Cascade)
 
-  shade shades @relation(fields: [shade_id], references: [id], onDelete: Cascade)
-  fibre fibres @relation(fields: [fibre_id], references: [id], onDelete: Cascade)
+  @@unique([shade_id, fibre_id])
+}
 
-  @@unique([shade_id, fibre_id]) // ✅ Prevent duplicate fibre usage in a shade
+model tenants {
+  id            String          @id @default(uuid()) @db.Uuid
+  name          String
+  domain        String?
+  plan          String?         @default("free")
+  is_active     Boolean?        @default(true)
+  settings      settings?
+  subscriptions subscriptions[]
+  users         users[]
+  orders        orders[]
+  productions   productions[]
+  created_at    DateTime?       @default(now()) @db.Timestamp(6)
+  updated_at    DateTime?       @default(now()) @db.Timestamp(6)
+  roles         roles[]
 }
 
 model subscriptions {
@@ -90,70 +101,99 @@ model subscriptions {
   tenants    tenants?  @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
-model tenants {
-  id         String    @id @default(uuid()) @db.Uuid
-  name       String
-  domain     String?
-  plan       String?   @default("free")
-  is_active  Boolean?  @default(true)
-  created_at DateTime? @default(now()) @db.Timestamp(6)
-  updated_at DateTime? @default(now()) @db.Timestamp(6)
-
-  subscriptions subscriptions[]
-  users         users[]
-  orders        orders[]
-  productions   productions[]
-}
-
 model users {
   id            String    @id @default(uuid()) @db.Uuid
   tenant_id     String?   @db.Uuid
   name          String?
   email         String    @unique
   password_hash String
-  role          String?
+  role          String? // Optional: for legacy or default fallback
   is_active     Boolean?  @default(true)
   created_at    DateTime? @default(now()) @db.Timestamp(6)
   updated_at    DateTime? @default(now()) @db.Timestamp(6)
 
-  tenants     tenants?      @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  productions productions[]
+  tenants       tenants?       @relation(fields: [tenant_id], references: [id])
+  productions   productions[]
+  user_settings user_settings?
+
+  user_roles user_roles[] // ⬅️ Link to scoped roles
 }
 
-model orders {
-  id           String @id @default(uuid()) @db.Uuid
-  order_number String @unique
-  buyer_id     String @db.Uuid
-  buyer        buyers @relation(fields: [buyer_id], references: [id], onDelete: Cascade)
-
-  shade_id String @db.Uuid
-  shade    shades @relation(fields: [shade_id], references: [id], onDelete: Cascade)
-
-  tenant_id String  @db.Uuid // ✅ Add this
-  tenant    tenants @relation(fields: [tenant_id], references: [id])
-
-  delivery_date DateTime
-  quantity_kg   Decimal  @db.Decimal(10, 2)
-  status        String   @default("pending") // "pending", "in_progress", "completed"
-  created_by    String
-
-  realisation Decimal? @db.Decimal(5, 2) // ✅ Optional field for realisation %
-
-  created_at  DateTime      @default(now())
-  updated_at  DateTime      @default(now())
-  productions productions[]
+model user_settings {
+  id                  String   @id @default(uuid()) @db.Uuid
+  user_id             String   @unique @db.Uuid
+  user                users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  theme               String   @default("auto")
+  locale              String   @default("en")
+  email_notifications Boolean  @default(true)
+  sms_alerts          Boolean  @default(false)
+  feature_toggles     Json?
+  created_at          DateTime @default(now())
+  updated_at          DateTime @default(now())
 }
 
-model buyers {
-  id         String   @id @default(uuid()) @db.Uuid
-  name       String
-  contact    String?
-  email      String?
-  address    String?
-  created_at DateTime @default(now())
-  updated_at DateTime @default(now())
+model settings {
+  id                   String    @id @default(uuid()) @db.Uuid
+  tenant_id            String    @unique @db.Uuid
+  tenant               tenants   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  theme                String    @default("auto")
+  locale               String    @default("en")
+  email_notifications  Boolean   @default(true)
+  sms_alerts           Boolean   @default(false)
+  production_reminders Boolean   @default(true)
+  plan_type            String?
+  billing_start_date   DateTime?
+  billing_end_date     DateTime?
+  integration_ai       Boolean   @default(false)
+  integration_tally    Boolean   @default(false)
+  feature_toggles      Json?
+  created_at           DateTime  @default(now())
+  updated_at           DateTime  @default(now())
+}
 
-  orders orders[]
+model roles {
+  id          String  @id @default(uuid()) @db.Uuid
+  tenant_id   String  @db.Uuid
+  name        String
+  description String?
+  permissions Json? // Optional: permissions like {"canEditOrders": true, "canDeleteUsers": false}
+
+  tenant     tenants      @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  user_roles user_roles[]
+
+  created_at       DateTime           @default(now())
+  updated_at       DateTime           @default(now())
+  role_permissions role_permissions[]
+
+  @@unique([tenant_id, name]) // Unique role name per tenant
+}
+
+model user_roles {
+  id      String @id @default(uuid()) @db.Uuid
+  user_id String @db.Uuid
+  role_id String @db.Uuid
+
+  user users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  role roles @relation(fields: [role_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, role_id])
+}
+
+model permissions {
+  id               String             @id @default(uuid()) @db.Uuid
+  code             String             @unique
+  description      String
+  role_permissions role_permissions[]
+}
+
+model role_permissions {
+  id            String      @id @default(uuid()) @db.Uuid
+  role_id       String      @db.Uuid
+  permission_id String      @db.Uuid
+  role          roles       @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  permission    permissions @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+
+  @@unique([role_id, permission_id])
 }
 
 model fiber_usage_history {
@@ -167,13 +207,35 @@ model fiber_usage_history {
 
 model fibre_usage_logs {
   id       String   @id @default(uuid()) @db.Uuid
-  fibre_id String   @db.Uuid // ✅ fix here: use @db.Uuid
+  fibre_id String   @db.Uuid
   used_kg  Decimal  @db.Decimal(10, 2)
   used_on  DateTime @default(now())
 
   fibre fibres @relation(fields: [fibre_id], references: [id], onDelete: Cascade)
 
   @@index([fibre_id])
+}
+
+model orders {
+  id            String   @id @default(uuid()) @db.Uuid
+  order_number  String   @unique
+  buyer_id      String   @db.Uuid
+  buyer         buyers   @relation(fields: [buyer_id], references: [id])
+  shade_id      String   @db.Uuid
+  shade         shades   @relation(fields: [shade_id], references: [id])
+  tenant_id     String   @db.Uuid
+  tenant        tenants  @relation(fields: [tenant_id], references: [id])
+  delivery_date DateTime
+  quantity_kg   Decimal  @db.Decimal(10, 2)
+  status        String   @default("pending")
+  created_by    String
+  realisation   Decimal? @db.Decimal(5, 2)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @default(now())
+
+  count         Int? 
+
+  productions productions[]
 }
 
 model productions {
@@ -189,19 +251,28 @@ model productions {
   remarks       String?
   status        String   @default("draft")
 
-  // ✅ Relational mappings
   tenant_id String  @db.Uuid
   tenant    tenants @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  order_id  String  @db.Uuid
+  order     orders  @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  user_id   String  @db.Uuid
+  user      users   @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-  order_id String @db.Uuid
-  order    orders @relation(fields: [order_id], references: [id], onDelete: Cascade)
-
-  user_id String @db.Uuid
-  user    users  @relation(fields: [user_id], references: [id], onDelete: Cascade)
-
+  production_logs production_logs[]
   created_at      DateTime          @default(now())
   updated_at      DateTime          @default(now())
-  production_logs production_logs[]
+}
+
+model buyers {
+  id         String   @id @default(uuid()) @db.Uuid
+  name       String
+  contact    String?
+  email      String?
+  address    String?
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now())
+
+  orders orders[]
 }
 
 model production_logs {

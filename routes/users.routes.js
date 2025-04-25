@@ -49,12 +49,11 @@ router.get('/', verifyToken, getAllUsers);
  *         description: User object
  */
 router.get('/:id', verifyToken, getUserById);
-
 /**
  * @swagger
  * /users:
  *   post:
- *     summary: Create a user
+ *     summary: Create a new user and assign a role
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -64,16 +63,34 @@ router.get('/:id', verifyToken, getUserById);
  *         application/json:
  *           schema:
  *             type: object
- *             required: [name, email, password, role, tenant_id]
+ *             required: [name, email, password, tenant_id]
  *             properties:
- *               name: { type: string }
- *               email: { type: string }
- *               password: { type: string }
- *               role: { type: string, enum: [admin, supervisor, operator] }
- *               tenant_id: { type: string }
+ *               name:
+ *                 type: string
+ *                 example: Jaya Kumar
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: jaya@dhya.in
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 example: secure@123
+ *               tenant_id:
+ *                 type: string
+ *                 format: uuid
+ *                 example: d9f2a1a0-3c7e-4a0c-9b79-2fc9c81c3035
+ *               role_id:
+ *                 type: string
+ *                 format: uuid
+ *                 example: 3b12f1d9-ff11-41f1-8cce-b0e531f3e00a
  *     responses:
  *       201:
- *         description: User created
+ *         description: User created successfully
+ *       409:
+ *         description: Email already in use
+ *       500:
+ *         description: Internal server error
  */
 router.post('/', verifyToken, createUser);
 
