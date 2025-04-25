@@ -10,7 +10,10 @@ const prisma = new PrismaClient();
 // ✅ Middlewares
 app.use(
   cors({
-    origin: 'http://localhost:5173', // frontend origin
+    origin: [
+      'http://localhost:5173', 
+      'https://dhya-spims-frontend-prod.vercel.app'
+    ],
     credentials: true,
   })
 );
