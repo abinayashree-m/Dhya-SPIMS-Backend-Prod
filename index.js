@@ -13,7 +13,7 @@ app.use(
     origin: [
       'http://localhost:5173', 
       'https://dhya-spims-frontend-prod.vercel.app',
-      'https://www.dhya.app/'
+      'https://www.dhya.app'
     ],
     credentials: true,
   })
