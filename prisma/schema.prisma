@@ -21,6 +21,10 @@ model fibres {
   fibre_name          String
   fibre_code          String
   stock_kg            Decimal               @db.Decimal(10, 2)
+  closing_stock       Decimal?              @db.Decimal(10, 2)
+  outward_stock       Decimal?              @db.Decimal(10, 2)
+  inward_stock        Decimal?              @db.Decimal(10, 2)
+  consumed_stock      Decimal?              @db.Decimal(10, 2)
   description         String?
   category_id         String?               @db.Uuid
   category            fibre_categories?     @relation(fields: [category_id], references: [id], onDelete: SetNull)

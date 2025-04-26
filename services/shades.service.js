@@ -5,23 +5,32 @@ const prisma = new PrismaClient();
 async function createShade(data) {
   const { fibre_composition = [], ...rest } = data;
 
-  // Step 1: Create the base shade
   const shade = await prisma.shades.create({
     data: { ...rest },
   });
 
-  // Step 2: Insert associated fibre compositions
   if (Array.isArray(fibre_composition) && fibre_composition.length > 0) {
+    // 🛡️ Remove duplicate fibre_id before inserting
+    const uniqueCompositions = [];
+    const seenFibreIds = new Set();
+
+    for (const f of fibre_composition) {
+      if (!seenFibreIds.has(f.fibre_id)) {
+        uniqueCompositions.push({
+          shade_id: shade.id,
+          fibre_id: f.fibre_id,
+          percentage: new Prisma.Decimal(f.percentage),
+        });
+        seenFibreIds.add(f.fibre_id);
+      }
+    }
+
     await prisma.shade_fibres.createMany({
-      data: fibre_composition.map((f) => ({
-        shade_id: shade.id,
-        fibre_id: f.fibre_id,
-        percentage: new Prisma.Decimal(f.percentage), // ✅ ensures decimal stored
-    })),
+      data: uniqueCompositions,
+      skipDuplicates: true, // optional extra safety
     });
   }
 
-  // Step 3: Return full shade with fibre info
   return getShadeById(shade.id);
 }
 
@@ -29,26 +38,35 @@ async function createShade(data) {
 async function updateShade(id, data) {
   const { fibre_composition = [], ...rest } = data;
 
-  // Step 1: Update shade base info
   const shade = await prisma.shades.update({
     where: { id },
     data: { ...rest },
   });
 
-  // Step 2: Replace fibre composition
   if (Array.isArray(fibre_composition)) {
     await prisma.shade_fibres.deleteMany({ where: { shade_id: id } });
 
+    // 🛡️ Remove duplicate fibre_id before inserting
+    const uniqueCompositions = [];
+    const seenFibreIds = new Set();
+
+    for (const f of fibre_composition) {
+      if (!seenFibreIds.has(f.fibre_id)) {
+        uniqueCompositions.push({
+          shade_id: id,
+          fibre_id: f.fibre_id,
+          percentage: new Prisma.Decimal(f.percentage),
+        });
+        seenFibreIds.add(f.fibre_id);
+      }
+    }
+
     await prisma.shade_fibres.createMany({
-      data: fibre_composition.map((f) => ({
-        shade_id: id,
-        fibre_id: f.fibre_id,
-        percentage: new Prisma.Decimal(f.percentage), // ✅ ensures decimal stored
-    })),
+      data: uniqueCompositions,
+      skipDuplicates: true,
     });
   }
 
-  // Step 3: Return updated shade with fibre info
   return getShadeById(id);
 }
 

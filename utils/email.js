@@ -64,7 +64,7 @@ async function sendOrderConfirmationEmail({
     `;
   
     await resend.emails.send({
-      from: 'Dhya <info@dhya.in>',
+      from: 'NSC Spinning Mills <info@dhya.in>',
       to,
       cc: ['dharsan@dhya.in'],
       subject: `Order Confirmation – ${orderNumber}`,
