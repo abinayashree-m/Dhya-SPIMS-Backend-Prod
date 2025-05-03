@@ -32,8 +32,13 @@ model fibres {
   shade_fibres        shade_fibres[]
   fiber_usage_history fiber_usage_history[]
   fibre_usage_logs    fibre_usage_logs[]
-  created_at          DateTime              @default(now()) @db.Timestamp(6)
-  updated_at          DateTime              @default(now()) @db.Timestamp(6)
+
+  // ✅ New relation for tracking restocking requests
+  restock_requests fibre_restock_requests[]
+
+  created_at      DateTime          @default(now()) @db.Timestamp(6)
+  updated_at      DateTime          @default(now()) @db.Timestamp(6)
+  fibre_transfers fibre_transfers[]
 }
 
 model blend_fibres {
@@ -237,7 +242,7 @@ model orders {
   created_at    DateTime @default(now())
   updated_at    DateTime @default(now())
 
-  count         Int? 
+  count Int?
 
   productions productions[]
 }
@@ -294,4 +299,58 @@ model production_logs {
 
   created_at DateTime @default(now())
   updated_at DateTime @default(now())
+}
+
+model suppliers {
+  id         String   @id @default(uuid()) @db.Uuid
+  name       String
+  contact    String?
+  email      String?
+  address    String?
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now())
+
+  fibre_requests  fibre_restock_requests[]
+  fibre_transfers fibre_transfers[]
+}
+
+model fibre_restock_requests {
+  id            String    @id @default(uuid()) @db.Uuid
+  fibre_id      String    @db.Uuid
+  supplier_id   String    @db.Uuid
+  requested_kg  Decimal   @db.Decimal(10, 2)
+  status        String    @default("requested")
+  expected_date DateTime?
+  notes         String?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now())
+
+  fibre    fibres    @relation(fields: [fibre_id], references: [id], onDelete: Cascade)
+  supplier suppliers @relation(fields: [supplier_id], references: [id], onDelete: Cascade)
+
+  @@index([fibre_id])
+  @@index([supplier_id])
+}
+
+model fibre_transfers {
+  id              String    @id @default(uuid()) @db.Uuid
+  fibre_id        String    @db.Uuid
+  supplier_id     String    @db.Uuid
+  sent_kg         Decimal   @db.Decimal(10, 2)
+  sent_date       DateTime
+  expected_return DateTime?
+  returned_kg     Decimal?  @db.Decimal(10, 2)
+  return_date     DateTime?
+  notes           String?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now())
+
+  fibre    fibres    @relation(fields: [fibre_id], references: [id], onDelete: Cascade)
+  supplier suppliers @relation(fields: [supplier_id], references: [id], onDelete: Cascade)
+
+  @@index([fibre_id])
+  @@index([supplier_id])
 }

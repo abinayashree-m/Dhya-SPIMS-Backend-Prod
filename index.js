@@ -56,7 +56,9 @@ const roleRoutes = require('./routes/userRoles.routes');
 // const yarnRoutes = require('./routes/yarns.routes');
 // const fileRoutes = require('./routes/files.routes');
 // const machineRoutes = require('./routes/machines.routes');
-// const supplierRoutes = require('./routes/suppliers.routes');
+const supplierRoutes = require('./routes/suppliers.routes');
+const fibreTransferRoutes = require('./routes/fibreTransfers.routes');
+
 
 // ✅ Route Registration
 app.use('/auth', authRoutes);
@@ -77,6 +79,8 @@ app.use('/productions', productionRoutes);
 app.use('/settings', settingsRoutes);         // ✅ Tenant-level settings
 app.use('/user-settings', userSettingsRoutes); // ✅ User-specific settings
 app.use('/roles', roleRoutes);
+app.use('/suppliers', supplierRoutes);
+app.use('/fibreTransfers', fibreTransferRoutes);
 
 // ✅ Start Server
 const PORT = process.env.PORT || 5001;
