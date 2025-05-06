@@ -14,12 +14,12 @@ async function getEmailSignature(tenant_id) {
   });
 
   if (!settings || !settings.tenant) {
-    return `<p>Regards,<br/>Team Dhya</p>`;
+    return `<p>Regards,<br/>Team NSC Spinning Mills</p>`;
   }
 
   const name = settings.tenant.name || 'Team';
   const domain = settings.tenant.domain;
-  const email = domain ? `info@${domain}` : 'support@example.com';
+  const email = domain ? `info@${domain}` : 'support@nscspinning.com';
   const website = domain ? `https://${domain}` : '#';
   const address = 'Avinashi, Tiruppur , Tamil Nadu, India'; // Optional: dynamic later
 
