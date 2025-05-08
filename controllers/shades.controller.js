@@ -6,27 +6,52 @@ exports.createShade = async (req, res) => {
     console.log('🛎️ Received POST /shades');
     console.log('📥 Body:', JSON.stringify(req.body, null, 2));
 
-    const { shade_code, shade_name, fibre_composition } = req.body;
+    const {
+      shade_code,
+      shade_name,
+      fibre_composition = [],
+      raw_cotton_composition = [],
+    } = req.body;
 
+    // Basic required validations
     if (!shade_code || !shade_name || !Array.isArray(fibre_composition)) {
       console.log('⛔ Missing required fields');
-      return res.status(400).json({ error: 'shade_code, shade_name, and fibre_composition[] are required.' });
+      return res.status(400).json({
+        error: 'shade_code, shade_name, and fibre_composition[] are required.',
+      });
     }
 
-    if (fibre_composition.length === 0) {
-      console.log('⛔ Empty fibre_composition array');
-      return res.status(400).json({ error: 'fibre_composition[] must not be empty.' });
+    if (fibre_composition.length === 0 && raw_cotton_composition.length === 0) {
+      console.log('⛔ No composition provided');
+      return res.status(400).json({
+        error: 'At least one fibre or raw cotton composition is required.',
+      });
     }
 
-    const total = fibre_composition.reduce((sum, f) => sum + Number(f.percentage), 0);
-    console.log('📊 Total %:', total);
+    // Ensure all composition percentages are numbers
+    const fibreTotal = fibre_composition.reduce((sum, f) => sum + Number(f.percentage || 0), 0);
+    const rawCottonTotal = raw_cotton_composition.reduce(
+      (sum, r) => sum + Number(r.percentage || 0),
+      0
+    );
+    const totalPercentage = fibreTotal + rawCottonTotal;
 
-    if (total !== 100) {
-      console.log('⛔ Invalid % sum:', total);
-      return res.status(400).json({ error: `Fibre percentage must total 100%. Received: ${total}%` });
+    console.log('📊 Total %:', totalPercentage);
+
+    if (totalPercentage !== 100) {
+      console.log('⛔ Invalid % sum:', totalPercentage);
+      return res.status(400).json({
+        error: `Total percentage must equal 100%. Received: ${totalPercentage}%`,
+      });
     }
 
-    const shade = await shadeService.createShade(req.body);
+    // Call service
+    const shade = await shadeService.createShade({
+      shade_code,
+      shade_name,
+      fibre_composition,
+      raw_cotton_composition,
+    });
 
     console.log('✅ Created Shade:', shade.id);
     res.status(201).json(shade);

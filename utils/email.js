@@ -46,7 +46,9 @@ async function sendOrderConfirmationEmail({
     deliveryDate,
   }) {
     const signature = await getEmailSignature(tenant_id);
-  
+    const formattedQuantity =
+    quantity >= 0 ? `+/- ${Number(quantity).toFixed(2)}` : `${Number(quantity).toFixed(2)}`;
+
     const htmlContent = `
       <p>Hello ${buyerName},</p>
   
@@ -54,9 +56,9 @@ async function sendOrderConfirmationEmail({
   
       <p>
         <strong>Order Date:</strong> ${new Date(orderDate).toLocaleDateString('en-GB')}<br/>
-        <strong>Delivery Date:</strong> ${new Date(deliveryDate).toLocaleDateString('en-GB')}<br/>
+        <strong>Expected Delivery Date:</strong> ${new Date(deliveryDate).toLocaleDateString('en-GB')}<br/>
         <strong>Shade Code:</strong> ${shadeCode}<br/>
-        <strong>Quantity:</strong> ${quantity} kg<br/>
+      <strong>Quantity:</strong> ${formattedQuantity} kg<br/>
         <strong>Count:</strong> ${count || 'N/A'}
       </p>
   

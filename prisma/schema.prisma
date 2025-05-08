@@ -62,15 +62,16 @@ model blends {
 }
 
 model shades {
-  id           String         @id @default(uuid()) @db.Uuid
-  shade_code   String
-  shade_name   String
-  percentage   String?
-  description  String?
-  shade_fibres shade_fibres[]
-  orders       orders[]
-  created_at   DateTime?      @default(now()) @db.Timestamp(6)
-  updated_at   DateTime?      @default(now()) @db.Timestamp(6)
+  id                      String                    @id @default(uuid()) @db.Uuid
+  shade_code              String
+  shade_name              String
+  percentage              String?
+  description             String?
+  shade_fibres            shade_fibres[]
+  orders                  orders[]
+  created_at              DateTime?                 @default(now()) @db.Timestamp(6)
+  updated_at              DateTime?                 @default(now()) @db.Timestamp(6)
+  raw_cotton_composition raw_cotton_composition[] @relation("ShadeRawCotton")
 }
 
 model shade_fibres {
@@ -353,4 +354,20 @@ model fibre_transfers {
 
   @@index([fibre_id])
   @@index([supplier_id])
+}
+
+model raw_cotton_composition {
+  id         String   @id @default(uuid()) @db.Uuid
+  shade_id   String   @db.Uuid
+  lot_number String? // ⬅️ Optional so existing rows won't break
+  percentage Int
+  stock_kg   Decimal  @default(0.0) @db.Decimal(10, 2)
+  grade      String?
+  source     String?
+  notes      String?
+  created_at DateTime @default(now())
+
+  shade shades @relation("ShadeRawCotton", fields: [shade_id], references: [id], onDelete: Cascade)
+
+  @@unique([shade_id, lot_number])
 }

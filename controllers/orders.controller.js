@@ -36,6 +36,7 @@ const bulkImportOrders = async (req, res) => {
         count
       } = row;
 
+      // ✅ Validate required fields
       if (!order_number || !buyer_id || !shade_id || !tenant_id || !quantity_kg || !delivery_date) {
         errors.push({ row: rowIndex, reason: 'Missing required fields' });
         continue;
@@ -66,13 +67,17 @@ const bulkImportOrders = async (req, res) => {
         continue;
       }
 
-      const buyer = await prisma.buyers.findUnique({ where: { id: buyer_id } });
+      // ✅ Ensure buyer and shade exist
+      const [buyer, shade] = await Promise.all([
+        prisma.buyers.findUnique({ where: { id: buyer_id } }),
+        prisma.shades.findUnique({ where: { id: shade_id } }),
+      ]);
+
       if (!buyer) {
         errors.push({ row: rowIndex, reason: 'Buyer not found' });
         continue;
       }
 
-      const shade = await prisma.shades.findUnique({ where: { id: shade_id } });
       if (!shade) {
         errors.push({ row: rowIndex, reason: 'Shade not found' });
         continue;
@@ -139,10 +144,16 @@ const createOrder = async (req, res) => {
   try {
     const order = await orderService.createOrder(req.body);
 
-    // 🔁 Fetch buyer info for email
-    const buyer = await prisma.buyers.findUnique({ where: { id: order.buyer_id } });
+    // 🔁 Fetch buyer and shade info for email
+    const [buyer, shade] = await Promise.all([
+      prisma.buyers.findUnique({ where: { id: order.buyer_id } }),
+      prisma.shades.findUnique({
+        where: { id: order.shade_id },
+        include: { raw_cotton_composition: true },
+      }),
+    ]);
 
-    // ✉️ Trigger email if email exists
+    // ✉️ Trigger email
     if (buyer?.email) {
       await sendOrderConfirmationEmail({
         to: buyer.email,
@@ -151,7 +162,7 @@ const createOrder = async (req, res) => {
         count: order.count,
         quantity: order.quantity_kg,
         tenant_id: order.tenant_id,
-        shadeCode: order.shade?.shade_code ?? '-', // Make sure shade is populated
+        shadeCode: shade?.shade_code ?? '-',
         orderDate: order.created_at,
         deliveryDate: order.delivery_date,
         cc: ['dharsan@dhya.in'],
