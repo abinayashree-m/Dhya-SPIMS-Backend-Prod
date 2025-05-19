@@ -47,6 +47,7 @@ const productionRoutes = require('./routes/production.routes');
 const settingsRoutes = require('./routes/settings.routes');
 const userSettingsRoutes = require('./routes/userSettings.routes');
 const roleRoutes = require('./routes/userRoles.routes');
+const mailingListRoutes = require('./routes/mailingLists.routes.js');
 
 
 // 🔒 Optional Routes (Uncomment when available)
@@ -58,7 +59,10 @@ const roleRoutes = require('./routes/userRoles.routes');
 // const machineRoutes = require('./routes/machines.routes');
 const supplierRoutes = require('./routes/suppliers.routes');
 const fibreTransferRoutes = require('./routes/fibreTransfers.routes');
-
+const employeeRoutes = require('./routes/employees.routes');
+const emailTemplates = require('./routes/emailTemplates.routes');
+const marketingRoutes = require('./routes/marketing.routes');
+const attendanceRoutes = require('./routes/attendance.routes');
 
 // ✅ Route Registration
 app.use('/auth', authRoutes);
@@ -81,7 +85,11 @@ app.use('/user-settings', userSettingsRoutes); // ✅ User-specific settings
 app.use('/roles', roleRoutes);
 app.use('/suppliers', supplierRoutes);
 app.use('/fibreTransfers', fibreTransferRoutes);
-
+app.use('/employees', employeeRoutes);
+app.use('/api/mailing-lists', mailingListRoutes);
+app.use('/email-templates', emailTemplates);
+app.use('/marketing', marketingRoutes);
+app.use('/attendance', attendanceRoutes);
 // ✅ Start Server
 const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {

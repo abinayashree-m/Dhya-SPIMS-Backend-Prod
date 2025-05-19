@@ -62,15 +62,15 @@ model blends {
 }
 
 model shades {
-  id                      String                    @id @default(uuid()) @db.Uuid
-  shade_code              String
-  shade_name              String
-  percentage              String?
-  description             String?
-  shade_fibres            shade_fibres[]
-  orders                  orders[]
-  created_at              DateTime?                 @default(now()) @db.Timestamp(6)
-  updated_at              DateTime?                 @default(now()) @db.Timestamp(6)
+  id                     String                   @id @default(uuid()) @db.Uuid
+  shade_code             String
+  shade_name             String
+  percentage             String?
+  description            String?
+  shade_fibres           shade_fibres[]
+  orders                 orders[]
+  created_at             DateTime?                @default(now()) @db.Timestamp(6)
+  updated_at             DateTime?                @default(now()) @db.Timestamp(6)
   raw_cotton_composition raw_cotton_composition[] @relation("ShadeRawCotton")
 }
 
@@ -282,7 +282,8 @@ model buyers {
   created_at DateTime @default(now())
   updated_at DateTime @default(now())
 
-  orders orders[]
+  orders            orders[]
+  mailingListBuyers MailingListBuyer[]
 }
 
 model production_logs {
@@ -370,4 +371,73 @@ model raw_cotton_composition {
   shade shades @relation("ShadeRawCotton", fields: [shade_id], references: [id], onDelete: Cascade)
 
   @@unique([shade_id, lot_number])
+}
+
+model employees {
+  id         String    @id @default(uuid()) @db.Uuid
+  name       String
+  token_no   String    @unique
+  shift_rate Decimal   @db.Decimal(10, 2)
+  aadhar_no  String    @unique
+  bank_acc_1 String
+  bank_acc_2 String? // Optional
+  department String? // Optional
+  join_date  DateTime? // Optional
+
+  created_at DateTime     @default(now())
+  updated_at DateTime     @default(now()) @updatedAt
+  Attendance Attendance[]
+}
+
+model MailingList {
+  id        String   @id @default(uuid()) @db.Uuid // ✅ Add @db.Uuid here
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  mailingListBuyers MailingListBuyer[]
+}
+
+model MailingListBuyer {
+  id            String @id @default(uuid())
+  mailingListId String @db.Uuid
+  buyerId       String @db.Uuid
+
+  mailingList MailingList @relation(fields: [mailingListId], references: [id], onDelete: Cascade)
+  buyer       buyers      @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+
+  @@unique([mailingListId, buyerId])
+}
+
+model EmailTemplate {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  subject   String
+  bodyHtml  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model Campaign {
+  id         String   @id @default(uuid())
+  name       String
+  subject    String
+  bodyHtml   String
+  recipients String[] // PostgreSQL array
+  tenant_id  String
+  createdAt  DateTime @default(now())
+}
+
+model Attendance {
+  id             String   @id @default(uuid())
+  date           DateTime
+  employee_id    String   @db.Uuid
+  shift          String // 'SHIFT_1' | 'SHIFT_2' | 'SHIFT_3'
+  overtime_hours Float
+  total_hours    Float
+  status         String // 'PRESENT' | 'HALF_DAY' | 'ABSENT'
+
+  employee employees @relation(fields: [employee_id], references: [id])
+
+  @@unique([date, employee_id])
 }
