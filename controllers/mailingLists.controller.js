@@ -7,8 +7,8 @@ const {
   
   exports.createMailingList = async (req, res) => {
     try {
-      const { name, buyerIds } = req.body;
-      const result = await createMailingListService(name, buyerIds);
+      const { name, buyerIds = [], recipients = [] } = req.body;
+      const result = await createMailingListService(name, buyerIds, recipients);
       res.json(result);
     } catch (err) {
       console.error('❌ Error creating mailing list:', err);

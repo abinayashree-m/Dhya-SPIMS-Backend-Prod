@@ -18,7 +18,7 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.options('*', cors()); // handle preflight requests
 // ✅ Swagger Docs
 const setupSwagger = require('./swagger');
@@ -63,6 +63,7 @@ const employeeRoutes = require('./routes/employees.routes');
 const emailTemplates = require('./routes/emailTemplates.routes');
 const marketingRoutes = require('./routes/marketing.routes');
 const attendanceRoutes = require('./routes/attendance.routes');
+const potentialBuyersRoutes = require('./routes/potentialBuyers.routes');
 
 // ✅ Route Registration
 app.use('/auth', authRoutes);
@@ -90,6 +91,7 @@ app.use('/api/mailing-lists', mailingListRoutes);
 app.use('/email-templates', emailTemplates);
 app.use('/marketing', marketingRoutes);
 app.use('/attendance', attendanceRoutes);
+app.use('/potential-buyers', potentialBuyersRoutes);
 // ✅ Start Server
 const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {

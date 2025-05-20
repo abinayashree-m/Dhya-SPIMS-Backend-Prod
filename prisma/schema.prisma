@@ -11,34 +11,31 @@ model fibre_categories {
   id          String   @id @default(uuid()) @db.Uuid
   name        String   @unique
   description String?
-  fibres      fibres[]
   created_at  DateTime @default(now())
   updated_at  DateTime @default(now())
+  fibres      fibres[]
 }
 
 model fibres {
-  id                  String                @id @default(uuid()) @db.Uuid
+  id                  String                   @id @default(uuid()) @db.Uuid
   fibre_name          String
   fibre_code          String
-  stock_kg            Decimal               @db.Decimal(10, 2)
-  closing_stock       Decimal?              @db.Decimal(10, 2)
-  outward_stock       Decimal?              @db.Decimal(10, 2)
-  inward_stock        Decimal?              @db.Decimal(10, 2)
-  consumed_stock      Decimal?              @db.Decimal(10, 2)
+  stock_kg            Decimal                  @db.Decimal(10, 2)
   description         String?
-  category_id         String?               @db.Uuid
-  category            fibre_categories?     @relation(fields: [category_id], references: [id], onDelete: SetNull)
+  created_at          DateTime                 @default(now()) @db.Timestamp(6)
+  updated_at          DateTime                 @default(now()) @db.Timestamp(6)
+  category_id         String?                  @db.Uuid
+  closing_stock       Decimal?                 @db.Decimal(10, 2)
+  consumed_stock      Decimal?                 @db.Decimal(10, 2)
+  inward_stock        Decimal?                 @db.Decimal(10, 2)
+  outward_stock       Decimal?                 @db.Decimal(10, 2)
   blend_fibres        blend_fibres[]
-  shade_fibres        shade_fibres[]
   fiber_usage_history fiber_usage_history[]
+  restock_requests    fibre_restock_requests[]
+  fibre_transfers     fibre_transfers[]
   fibre_usage_logs    fibre_usage_logs[]
-
-  // ✅ New relation for tracking restocking requests
-  restock_requests fibre_restock_requests[]
-
-  created_at      DateTime          @default(now()) @db.Timestamp(6)
-  updated_at      DateTime          @default(now()) @db.Timestamp(6)
-  fibre_transfers fibre_transfers[]
+  category            fibre_categories?        @relation(fields: [category_id], references: [id])
+  shade_fibres        shade_fibres[]
 }
 
 model blend_fibres {
@@ -56,22 +53,22 @@ model blends {
   id           String         @id @default(uuid()) @db.Uuid
   blend_code   String?
   description  String?
-  blend_fibres blend_fibres[]
   created_at   DateTime?      @default(now()) @db.Timestamp(6)
   updated_at   DateTime?      @default(now()) @db.Timestamp(6)
+  blend_fibres blend_fibres[]
 }
 
 model shades {
   id                     String                   @id @default(uuid()) @db.Uuid
   shade_code             String
   shade_name             String
-  percentage             String?
-  description            String?
-  shade_fibres           shade_fibres[]
-  orders                 orders[]
   created_at             DateTime?                @default(now()) @db.Timestamp(6)
+  description            String?
   updated_at             DateTime?                @default(now()) @db.Timestamp(6)
+  percentage             String?
+  orders                 orders[]
   raw_cotton_composition raw_cotton_composition[] @relation("ShadeRawCotton")
+  shade_fibres           shade_fibres[]
 }
 
 model shade_fibres {
@@ -79,8 +76,8 @@ model shade_fibres {
   shade_id   String  @db.Uuid
   fibre_id   String  @db.Uuid
   percentage Decimal @db.Decimal(5, 2)
-  shade      shades  @relation(fields: [shade_id], references: [id], onDelete: Cascade)
   fibre      fibres  @relation(fields: [fibre_id], references: [id], onDelete: Cascade)
+  shade      shades  @relation(fields: [shade_id], references: [id], onDelete: Cascade)
 
   @@unique([shade_id, fibre_id])
 }
@@ -91,14 +88,14 @@ model tenants {
   domain        String?
   plan          String?         @default("free")
   is_active     Boolean?        @default(true)
+  created_at    DateTime?       @default(now()) @db.Timestamp(6)
+  updated_at    DateTime?       @default(now()) @db.Timestamp(6)
+  orders        orders[]
+  productions   productions[]
+  roles         roles[]
   settings      settings?
   subscriptions subscriptions[]
   users         users[]
-  orders        orders[]
-  productions   productions[]
-  created_at    DateTime?       @default(now()) @db.Timestamp(6)
-  updated_at    DateTime?       @default(now()) @db.Timestamp(6)
-  roles         roles[]
 }
 
 model subscriptions {
@@ -112,27 +109,24 @@ model subscriptions {
 }
 
 model users {
-  id            String    @id @default(uuid()) @db.Uuid
-  tenant_id     String?   @db.Uuid
+  id            String         @id @default(uuid()) @db.Uuid
+  tenant_id     String?        @db.Uuid
   name          String?
-  email         String    @unique
+  email         String         @unique
   password_hash String
-  role          String? // Optional: for legacy or default fallback
-  is_active     Boolean?  @default(true)
-  created_at    DateTime? @default(now()) @db.Timestamp(6)
-  updated_at    DateTime? @default(now()) @db.Timestamp(6)
-
-  tenants       tenants?       @relation(fields: [tenant_id], references: [id])
+  role          String?
+  is_active     Boolean?       @default(true)
+  created_at    DateTime?      @default(now()) @db.Timestamp(6)
+  updated_at    DateTime?      @default(now()) @db.Timestamp(6)
   productions   productions[]
+  user_roles    user_roles[]
   user_settings user_settings?
-
-  user_roles user_roles[] // ⬅️ Link to scoped roles
+  tenants       tenants?       @relation(fields: [tenant_id], references: [id])
 }
 
 model user_settings {
   id                  String   @id @default(uuid()) @db.Uuid
   user_id             String   @unique @db.Uuid
-  user                users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
   theme               String   @default("auto")
   locale              String   @default("en")
   email_notifications Boolean  @default(true)
@@ -140,12 +134,12 @@ model user_settings {
   feature_toggles     Json?
   created_at          DateTime @default(now())
   updated_at          DateTime @default(now())
+  user                users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
 }
 
 model settings {
   id                   String    @id @default(uuid()) @db.Uuid
   tenant_id            String    @unique @db.Uuid
-  tenant               tenants   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
   theme                String    @default("auto")
   locale               String    @default("en")
   email_notifications  Boolean   @default(true)
@@ -159,32 +153,30 @@ model settings {
   feature_toggles      Json?
   created_at           DateTime  @default(now())
   updated_at           DateTime  @default(now())
+  tenant               tenants   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
 }
 
 model roles {
-  id          String  @id @default(uuid()) @db.Uuid
-  tenant_id   String  @db.Uuid
-  name        String
-  description String?
-  permissions Json? // Optional: permissions like {"canEditOrders": true, "canDeleteUsers": false}
-
-  tenant     tenants      @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
-  user_roles user_roles[]
-
+  id               String             @id @default(uuid()) @db.Uuid
+  tenant_id        String             @db.Uuid
+  name             String
+  description      String?
+  permissions      Json?
   created_at       DateTime           @default(now())
   updated_at       DateTime           @default(now())
   role_permissions role_permissions[]
+  tenant           tenants            @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  user_roles       user_roles[]
 
-  @@unique([tenant_id, name]) // Unique role name per tenant
+  @@unique([tenant_id, name])
 }
 
 model user_roles {
   id      String @id @default(uuid()) @db.Uuid
   user_id String @db.Uuid
   role_id String @db.Uuid
-
-  user users @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  role roles @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  role    roles  @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  user    users  @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@unique([user_id, role_id])
 }
@@ -200,8 +192,8 @@ model role_permissions {
   id            String      @id @default(uuid()) @db.Uuid
   role_id       String      @db.Uuid
   permission_id String      @db.Uuid
-  role          roles       @relation(fields: [role_id], references: [id], onDelete: Cascade)
   permission    permissions @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+  role          roles       @relation(fields: [role_id], references: [id], onDelete: Cascade)
 
   @@unique([role_id, permission_id])
 }
@@ -211,8 +203,7 @@ model fiber_usage_history {
   fibre_id String   @db.Uuid
   date     DateTime
   usedKg   Decimal  @db.Decimal(10, 2)
-
-  fibre fibres @relation(fields: [fibre_id], references: [id])
+  fibre    fibres   @relation(fields: [fibre_id], references: [id])
 }
 
 model fibre_usage_logs {
@@ -220,99 +211,90 @@ model fibre_usage_logs {
   fibre_id String   @db.Uuid
   used_kg  Decimal  @db.Decimal(10, 2)
   used_on  DateTime @default(now())
-
-  fibre fibres @relation(fields: [fibre_id], references: [id], onDelete: Cascade)
+  fibre    fibres   @relation(fields: [fibre_id], references: [id], onDelete: Cascade)
 
   @@index([fibre_id])
 }
 
 model orders {
-  id            String   @id @default(uuid()) @db.Uuid
-  order_number  String   @unique
-  buyer_id      String   @db.Uuid
-  buyer         buyers   @relation(fields: [buyer_id], references: [id])
-  shade_id      String   @db.Uuid
-  shade         shades   @relation(fields: [shade_id], references: [id])
-  tenant_id     String   @db.Uuid
-  tenant        tenants  @relation(fields: [tenant_id], references: [id])
+  id            String        @id @default(uuid()) @db.Uuid
+  order_number  String        @unique
+  buyer_id      String        @db.Uuid
+  shade_id      String        @db.Uuid
   delivery_date DateTime
-  quantity_kg   Decimal  @db.Decimal(10, 2)
-  status        String   @default("pending")
+  quantity_kg   Decimal       @db.Decimal(10, 2)
+  status        String        @default("pending")
+  created_at    DateTime      @default(now())
+  updated_at    DateTime      @default(now())
+  tenant_id     String        @db.Uuid
   created_by    String
-  realisation   Decimal? @db.Decimal(5, 2)
-  created_at    DateTime @default(now())
-  updated_at    DateTime @default(now())
-
-  count Int?
-
-  productions productions[]
+  realisation   Decimal?      @db.Decimal(5, 2)
+  count         Int?
+  buyer         buyers        @relation(fields: [buyer_id], references: [id])
+  shade         shades        @relation(fields: [shade_id], references: [id])
+  tenant        tenants       @relation(fields: [tenant_id], references: [id])
+  productions   productions[]
 }
 
 model productions {
-  id            String   @id @default(uuid()) @db.Uuid
-  date          DateTime @default(now())
-  section       String
-  machine       String
-  shift         String
-  count         String?
-  hank          Decimal? @db.Decimal(6, 2)
-  production_kg Decimal  @db.Decimal(10, 2)
-  required_qty  Decimal  @db.Decimal(10, 2)
-  remarks       String?
-  status        String   @default("draft")
-
-  tenant_id String  @db.Uuid
-  tenant    tenants @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
-  order_id  String  @db.Uuid
-  order     orders  @relation(fields: [order_id], references: [id], onDelete: Cascade)
-  user_id   String  @db.Uuid
-  user      users   @relation(fields: [user_id], references: [id], onDelete: Cascade)
-
-  production_logs production_logs[]
+  id              String            @id @default(uuid()) @db.Uuid
+  date            DateTime          @default(now())
+  section         String
+  machine         String
+  shift           String
+  count           String?
+  hank            Decimal?          @db.Decimal(6, 2)
+  production_kg   Decimal           @db.Decimal(10, 2)
+  remarks         String?
   created_at      DateTime          @default(now())
   updated_at      DateTime          @default(now())
+  order_id        String            @db.Uuid
+  required_qty    Decimal           @db.Decimal(10, 2)
+  status          String            @default("draft")
+  tenant_id       String            @db.Uuid
+  user_id         String            @db.Uuid
+  production_logs production_logs[]
+  order           orders            @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  tenant          tenants           @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  user            users             @relation(fields: [user_id], references: [id], onDelete: Cascade)
 }
 
 model buyers {
-  id         String   @id @default(uuid()) @db.Uuid
-  name       String
-  contact    String?
-  email      String?
-  address    String?
-  created_at DateTime @default(now())
-  updated_at DateTime @default(now())
-
-  orders            orders[]
+  id                String             @id @default(uuid()) @db.Uuid
+  name              String
+  contact           String?
+  email             String?
+  address           String?
+  created_at        DateTime           @default(now())
+  updated_at        DateTime           @default(now())
   mailingListBuyers MailingListBuyer[]
+  orders            orders[]
 }
 
 model production_logs {
   id            String      @id @default(uuid()) @db.Uuid
   production_id String      @db.Uuid
-  production    productions @relation(fields: [production_id], references: [id], onDelete: Cascade)
-
-  log_date      DateTime @default(now())
+  log_date      DateTime    @default(now())
   shift         String
   machine       String
   section       String
   operator      String?
-  production_kg Decimal  @db.Decimal(10, 2)
+  production_kg Decimal     @db.Decimal(10, 2)
   remarks       String?
-
-  created_at DateTime @default(now())
-  updated_at DateTime @default(now())
+  created_at    DateTime    @default(now())
+  updated_at    DateTime    @default(now())
+  production    productions @relation(fields: [production_id], references: [id], onDelete: Cascade)
 }
 
 model suppliers {
-  id         String   @id @default(uuid()) @db.Uuid
-  name       String
-  contact    String?
-  email      String?
-  address    String?
-  is_active  Boolean  @default(true)
-  created_at DateTime @default(now())
-  updated_at DateTime @default(now())
-
+  id              String                   @id @default(uuid()) @db.Uuid
+  name            String
+  contact         String?
+  email           String?
+  address         String?
+  is_active       Boolean                  @default(true)
+  created_at      DateTime                 @default(now())
+  updated_at      DateTime                 @default(now())
   fibre_requests  fibre_restock_requests[]
   fibre_transfers fibre_transfers[]
 }
@@ -325,12 +307,10 @@ model fibre_restock_requests {
   status        String    @default("requested")
   expected_date DateTime?
   notes         String?
-
-  created_at DateTime @default(now())
-  updated_at DateTime @default(now())
-
-  fibre    fibres    @relation(fields: [fibre_id], references: [id], onDelete: Cascade)
-  supplier suppliers @relation(fields: [supplier_id], references: [id], onDelete: Cascade)
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @default(now())
+  fibre         fibres    @relation(fields: [fibre_id], references: [id], onDelete: Cascade)
+  supplier      suppliers @relation(fields: [supplier_id], references: [id], onDelete: Cascade)
 
   @@index([fibre_id])
   @@index([supplier_id])
@@ -346,12 +326,10 @@ model fibre_transfers {
   returned_kg     Decimal?  @db.Decimal(10, 2)
   return_date     DateTime?
   notes           String?
-
-  created_at DateTime @default(now())
-  updated_at DateTime @default(now())
-
-  fibre    fibres    @relation(fields: [fibre_id], references: [id], onDelete: Cascade)
-  supplier suppliers @relation(fields: [supplier_id], references: [id], onDelete: Cascade)
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @default(now())
+  fibre           fibres    @relation(fields: [fibre_id], references: [id], onDelete: Cascade)
+  supplier        suppliers @relation(fields: [supplier_id], references: [id], onDelete: Cascade)
 
   @@index([fibre_id])
   @@index([supplier_id])
@@ -360,84 +338,103 @@ model fibre_transfers {
 model raw_cotton_composition {
   id         String   @id @default(uuid()) @db.Uuid
   shade_id   String   @db.Uuid
-  lot_number String? // ⬅️ Optional so existing rows won't break
+  lot_number String?
   percentage Int
   stock_kg   Decimal  @default(0.0) @db.Decimal(10, 2)
   grade      String?
   source     String?
   notes      String?
   created_at DateTime @default(now())
-
-  shade shades @relation("ShadeRawCotton", fields: [shade_id], references: [id], onDelete: Cascade)
+  shade      shades   @relation("ShadeRawCotton", fields: [shade_id], references: [id], onDelete: Cascade)
 
   @@unique([shade_id, lot_number])
 }
 
 model employees {
-  id         String    @id @default(uuid()) @db.Uuid
+  id         String       @id @default(uuid()) @db.Uuid
   name       String
-  token_no   String    @unique
-  shift_rate Decimal   @db.Decimal(10, 2)
-  aadhar_no  String    @unique
+  token_no   String       @unique
+  shift_rate Decimal      @db.Decimal(10, 2)
+  aadhar_no  String       @unique
   bank_acc_1 String
-  bank_acc_2 String? // Optional
-  department String? // Optional
-  join_date  DateTime? // Optional
-
+  bank_acc_2 String?
+  department String?
+  join_date  DateTime?
   created_at DateTime     @default(now())
   updated_at DateTime     @default(now()) @updatedAt
   Attendance Attendance[]
 }
 
 model MailingList {
-  id        String   @id @default(uuid()) @db.Uuid // ✅ Add @db.Uuid here
-  name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
-
-  mailingListBuyers MailingListBuyer[]
+  id                    String                 @id @default(uuid()) @db.Uuid
+  name                  String
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @default(now()) @updatedAt
+  mailingListBuyers     MailingListBuyer[]
+  mailingListRecipients MailingListRecipient[] // ✅ Correct relation
 }
 
 model MailingListBuyer {
-  id            String @id @default(uuid())
-  mailingListId String @db.Uuid
-  buyerId       String @db.Uuid
-
-  mailingList MailingList @relation(fields: [mailingListId], references: [id], onDelete: Cascade)
-  buyer       buyers      @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  id            String      @id @default(uuid())
+  mailingListId String      @db.Uuid
+  buyerId       String      @db.Uuid
+  buyer         buyers      @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  mailingList   MailingList @relation(fields: [mailingListId], references: [id], onDelete: Cascade)
 
   @@unique([mailingListId, buyerId])
 }
 
 model EmailTemplate {
-  id        String   @id @default(uuid()) @db.Uuid
   name      String
   subject   String
   bodyHtml  String
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
+  id        String   @id @default(uuid()) @db.Uuid
 }
 
 model Campaign {
   id         String   @id @default(uuid())
-  name       String
+  tenant_id  String
   subject    String
   bodyHtml   String
-  recipients String[] // PostgreSQL array
-  tenant_id  String
   createdAt  DateTime @default(now())
+  name       String
+  recipients String[]
 }
 
 model Attendance {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   date           DateTime
-  employee_id    String   @db.Uuid
-  shift          String // 'SHIFT_1' | 'SHIFT_2' | 'SHIFT_3'
+  shift          String
   overtime_hours Float
   total_hours    Float
-  status         String // 'PRESENT' | 'HALF_DAY' | 'ABSENT'
-
-  employee employees @relation(fields: [employee_id], references: [id])
+  status         String
+  employee_id    String    @db.Uuid
+  employee       employees @relation(fields: [employee_id], references: [id])
 
   @@unique([date, employee_id])
+}
+
+model PotentialBuyer {
+  id        String   @id @default(cuid())
+  company   String
+  person    String
+  email     String   @unique
+  phone     String?
+  notes     String?
+  createdAt DateTime @default(now())
+}
+
+model MailingListRecipient {
+  id            String      @id @default(uuid()) @db.Uuid
+  mailingListId String      @db.Uuid
+  name          String
+  email         String
+  company       String
+  source        String // 'buyer' | 'potential'
+  createdAt     DateTime    @default(now())
+  mailingList   MailingList @relation(fields: [mailingListId], references: [id], onDelete: Cascade)
+
+  @@index([mailingListId])
 }
