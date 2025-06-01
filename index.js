@@ -64,6 +64,7 @@ const emailTemplates = require('./routes/emailTemplates.routes');
 const marketingRoutes = require('./routes/marketing.routes');
 const attendanceRoutes = require('./routes/attendance.routes');
 const potentialBuyersRoutes = require('./routes/potentialBuyers.routes');
+const parseRoutes = require('./routes/parse.routes');
 
 // ✅ Route Registration
 app.use('/auth', authRoutes);
@@ -92,6 +93,8 @@ app.use('/email-templates', emailTemplates);
 app.use('/marketing', marketingRoutes);
 app.use('/attendance', attendanceRoutes);
 app.use('/potential-buyers', potentialBuyersRoutes);
+app.use('/purchase-orders', require('./routes/purchaseOrders.routes'));
+app.use('/parse-purchase-order', parseRoutes);
 // ✅ Start Server
 const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {

@@ -438,3 +438,48 @@ model MailingListRecipient {
 
   @@index([mailingListId])
 }
+
+model purchase_orders {
+  id                  String                 @id @default(uuid()) @db.Uuid
+  tenant_id           String                 @db.Uuid
+  po_number           String
+  po_date             DateTime?
+  buyer_name          String
+  buyer_contact_name  String?
+  buyer_contact_phone String?
+  buyer_email         String?
+  buyer_address       String?
+  buyer_gst_no        String?
+  buyer_pan_no        String?
+  supplier_name       String?
+  supplier_gst_no     String?
+  payment_terms       String?
+  style_ref_no        String?
+  delivery_address    String?
+  tax_details         Json?
+  grand_total         Decimal                @db.Decimal(12, 2)
+  amount_in_words     String?
+  notes               String?
+  created_at          DateTime               @default(now())
+  updated_at          DateTime               @default(now())
+  created_by          String?
+  items               purchase_order_items[]
+}
+
+model purchase_order_items {
+  id                String   @id @default(uuid()) @db.Uuid
+  purchase_order_id String   @db.Uuid
+  order_code        String?
+  yarn_description  String
+  color             String?
+  count             Int?
+  uom               String?
+  bag_count         Int?
+  quantity          Decimal  @db.Decimal(10, 2)
+  rate              Decimal  @db.Decimal(10, 2)
+  gst_percent       Decimal? @db.Decimal(4, 2)
+  taxable_amount    Decimal  @db.Decimal(12, 2)
+  shade_no          String?
+
+  purchase_order purchase_orders @relation(fields: [purchase_order_id], references: [id], onDelete: Cascade)
+}
