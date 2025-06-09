@@ -72,3 +72,48 @@ exports.deletePurchaseOrder = async (req, res) => {
     res.status(400).json({ error: err.message });
   }
 };
+
+exports.verify = async (req, res) => {
+  const { id } = req.params;
+  console.log(`🔍 [POST] /purchase-orders/${id}/verify - Verifying PO`);
+  try {
+    const result = await purchaseOrderService.verify(id, req.user);
+    console.log(`✅ Purchase order verified: ID=${id}`);
+    res.json(result);
+  } catch (err) {
+    console.error(`❌ Error verifying purchase order ID=${id}:`, err);
+    res.status(400).json({ error: err.message });
+  }
+};
+
+exports.convert = async (req, res) => {
+  const { id } = req.params;
+  console.log(`🔄 [POST] /purchase-orders/${id}/convert - Converting PO to Sales Order`);
+  console.log('📝 Request Body:', JSON.stringify(req.body, null, 2));
+  console.log('👤 User:', JSON.stringify(req.user, null, 2));
+  try {
+    const salesOrder = await purchaseOrderService.convertToSalesOrder(id, req.user, req.body);
+    console.log(`✅ PO converted to Sales Order: ID=${salesOrder.id}`);
+    res.status(201).json(salesOrder);
+  } catch (err) {
+    console.error(`❌ Error converting purchase order ID=${id}:`, err);
+    res.status(400).json({ error: err.message });
+  }
+};
+
+exports.parseAndCreatePurchaseOrder = async (req, res) => {
+  console.log('📥 [POST] /purchase-orders/upload-and-parse - New file received');
+  
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded.' });
+  }
+
+  try {
+    const poData = await purchaseOrderService.parseFileAndCreate(req.file, req.user);
+    console.log(`✅ File parsed and PO created: ID=${poData.id}`);
+    res.status(201).json(poData);
+  } catch (error) {
+    console.error('❌ Error in parsing and creation flow:', error.message);
+    res.status(500).json({ error: 'Failed to process purchase order.' });
+  }
+};

@@ -217,23 +217,24 @@ model fibre_usage_logs {
 }
 
 model orders {
-  id            String        @id @default(uuid()) @db.Uuid
-  order_number  String        @unique
-  buyer_id      String        @db.Uuid
-  shade_id      String        @db.Uuid
-  delivery_date DateTime
-  quantity_kg   Decimal       @db.Decimal(10, 2)
-  status        String        @default("pending")
-  created_at    DateTime      @default(now())
-  updated_at    DateTime      @default(now())
-  tenant_id     String        @db.Uuid
-  created_by    String
-  realisation   Decimal?      @db.Decimal(5, 2)
-  count         Int?
-  buyer         buyers        @relation(fields: [buyer_id], references: [id])
-  shade         shades        @relation(fields: [shade_id], references: [id])
-  tenant        tenants       @relation(fields: [tenant_id], references: [id])
-  productions   productions[]
+  id              String            @id @default(uuid()) @db.Uuid
+  order_number    String            @unique
+  buyer_id        String            @db.Uuid
+  shade_id        String            @db.Uuid
+  delivery_date   DateTime
+  quantity_kg     Decimal           @db.Decimal(10, 2)
+  status          String            @default("pending")
+  created_at      DateTime          @default(now())
+  updated_at      DateTime          @default(now())
+  tenant_id       String            @db.Uuid
+  created_by      String
+  realisation     Decimal?          @db.Decimal(5, 2)
+  count           Int?
+  buyer           buyers            @relation(fields: [buyer_id], references: [id])
+  shade           shades            @relation(fields: [shade_id], references: [id])
+  tenant          tenants           @relation(fields: [tenant_id], references: [id])
+  productions     productions[]
+  purchase_orders purchase_orders[]
 }
 
 model productions {
@@ -440,10 +441,13 @@ model MailingListRecipient {
 }
 
 model purchase_orders {
-  id                  String                 @id @default(uuid()) @db.Uuid
-  tenant_id           String                 @db.Uuid
-  po_number           String
-  po_date             DateTime?
+  id                    String    @id @default(uuid()) @db.Uuid
+  tenant_id             String    @db.Uuid
+  po_number             String
+  po_date               DateTime?
+  status                String    @default("uploaded") // uploaded | verified | converted
+  linked_sales_order_id String?   @db.Uuid // Link to orders.id (optional)
+
   buyer_name          String
   buyer_contact_name  String?
   buyer_contact_phone String?
@@ -464,6 +468,7 @@ model purchase_orders {
   updated_at          DateTime               @default(now())
   created_by          String?
   items               purchase_order_items[]
+  sales_order         orders?                @relation(fields: [linked_sales_order_id], references: [id])
 }
 
 model purchase_order_items {
