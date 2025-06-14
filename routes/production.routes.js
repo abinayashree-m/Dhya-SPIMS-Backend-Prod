@@ -190,11 +190,39 @@ router.get('/efficiency/machine', controller.getMachineEfficiency);
  */
 router.get('/:id', controller.getProductionById);
 
-
+/**
+ * @swagger
+ * /api/production/date/{date}:
+ *   get:
+ *     summary: Get production entries for a specific date
+ *     tags: [Production]
+ *     parameters:
+ *       - in: path
+ *         name: date
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Date in YYYY-MM-DD format
+ *     responses:
+ *       200:
+ *         description: List of production entries for the date
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Production'
+ *       400:
+ *         description: Invalid date format
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/date/:date', controller.getProductionByDate);
 
 /**
  * @swagger
- * /productions:
+ * /api/production:
  *   post:
  *     summary: Create a new production entry
  *     tags: [Productions]
@@ -208,48 +236,59 @@ router.get('/:id', controller.getProductionById);
  *             type: object
  *             required:
  *               - date
- *               - section
- *               - machine
- *               - shift
- *               - production_kg
- *               - required_qty
- *               - tenant_id
- *               - order_id
- *               - user_id
  *             properties:
  *               date:
  *                 type: string
- *                 format: date-time
- *               section:
- *                 type: string
- *               machine:
- *                 type: string
- *               shift:
- *                 type: string
- *               count:
- *                 type: string
- *               hank:
- *                 type: number
- *               production_kg:
- *                 type: number
- *               required_qty:
- *                 type: number
+ *                 format: date
+ *               blow_room:
+ *                 type: object
+ *                 properties:
+ *                   total:
+ *                     type: number
+ *                   remarks:
+ *                     type: string
+ *               carding:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     machine:
+ *                       type: string
+ *                     shift:
+ *                       type: string
+ *                     production_kg:
+ *                       type: number
+ *                     required_qty:
+ *                       type: number
+ *                     remarks:
+ *                       type: string
+ *               drawing:
+ *                 type: array
+ *                 items:
+ *                   $ref: '#/components/schemas/ProductionSectionEntry'
+ *               framing:
+ *                 type: array
+ *                 items:
+ *                   $ref: '#/components/schemas/ProductionSectionEntry'
+ *               simplex:
+ *                 type: array
+ *                 items:
+ *                   $ref: '#/components/schemas/ProductionSectionEntry'
+ *               spinning:
+ *                 type: array
+ *                 items:
+ *                   $ref: '#/components/schemas/ProductionSectionEntry'
+ *               autoconer:
+ *                 type: array
+ *                 items:
+ *                   $ref: '#/components/schemas/ProductionSectionEntry'
  *               remarks:
- *                 type: string
- *               status:
- *                 type: string
- *                 enum: [draft, final]
- *               tenant_id:
- *                 type: string
- *               order_id:
- *                 type: string
- *               user_id:
  *                 type: string
  *     responses:
  *       201:
- *         description: Production entry created
+ *         description: Production entry created successfully
  *       400:
- *         description: Invalid input
+ *         description: Invalid input data
  *       401:
  *         description: Unauthorized
  */
@@ -257,19 +296,17 @@ router.post('/', controller.createProduction);
 
 /**
  * @swagger
- * /productions/{id}:
+ * /api/production/{id}:
  *   put:
- *     summary: Update a production entry
- *     tags: [Productions]
- *     security:
- *       - bearerAuth: []
+ *     summary: Update an existing production entry
+ *     tags: [Production]
  *     parameters:
- *       - name: id
- *         in: path
+ *       - in: path
+ *         name: id
  *         required: true
- *         description: Production ID
  *         schema:
  *           type: string
+ *         description: Production entry ID
  *     requestBody:
  *       required: true
  *       content:
@@ -277,56 +314,209 @@ router.post('/', controller.createProduction);
  *           schema:
  *             type: object
  *             properties:
- *               section:
- *                 type: string
- *               machine:
- *                 type: string
- *               shift:
- *                 type: string
- *               count:
- *                 type: string
- *               hank:
- *                 type: number
- *               production_kg:
- *                 type: number
- *               required_qty:
- *                 type: number
+ *               blowRoom:
+ *                 type: object
+ *                 properties:
+ *                   total:
+ *                     type: number
+ *                     minimum: 0
+ *                   remarks:
+ *                     type: string
+ *               carding:
+ *                 type: array
+ *                 items:
+ *                   $ref: '#/components/schemas/SectionRow'
+ *               drawing:
+ *                 type: array
+ *                 items:
+ *                   $ref: '#/components/schemas/SectionRow'
+ *               framing:
+ *                 type: array
+ *                 items:
+ *                   $ref: '#/components/schemas/SectionRow'
+ *               simplex:
+ *                 type: array
+ *                 items:
+ *                   $ref: '#/components/schemas/SectionRow'
+ *               spinning:
+ *                 type: array
+ *                 items:
+ *                   $ref: '#/components/schemas/SectionRow'
+ *               autoconer:
+ *                 type: array
+ *                 items:
+ *                   $ref: '#/components/schemas/SectionRow'
  *               remarks:
- *                 type: string
- *               status:
  *                 type: string
  *     responses:
  *       200:
- *         description: Production updated
+ *         description: Production entry updated successfully
  *       400:
- *         description: Invalid input
+ *         description: Invalid input data
  *       404:
- *         description: Production not found
+ *         description: Production entry not found
+ *       401:
+ *         description: Unauthorized
  */
 router.put('/:id', controller.updateProduction);
 
 /**
  * @swagger
- * /productions/{id}:
+ * /api/production/{id}:
  *   delete:
  *     summary: Delete a production entry
- *     tags: [Productions]
- *     security:
- *       - bearerAuth: []
+ *     tags: [Production]
  *     parameters:
- *       - name: id
- *         in: path
+ *       - in: path
+ *         name: id
  *         required: true
- *         description: Production ID
  *         schema:
  *           type: string
+ *         description: Production entry ID
  *     responses:
- *       204:
- *         description: Production deleted successfully
+ *       200:
+ *         description: Production entry deleted successfully
  *       404:
- *         description: Production not found
+ *         description: Production entry not found
+ *       401:
+ *         description: Unauthorized
  */
 router.delete('/:id', controller.deleteProduction);
 
+/**
+ * @swagger
+ * /api/production:
+ *   get:
+ *     summary: List all production entries
+ *     tags: [Production]
+ *     parameters:
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Start date in YYYY-MM-DD format
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: End date in YYYY-MM-DD format
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 10
+ *         description: Number of items per page
+ *     responses:
+ *       200:
+ *         description: List of production entries with pagination
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 entries:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Production'
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                     page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     pages:
+ *                       type: integer
+ *       400:
+ *         description: Invalid query parameters
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/', controller.listProductions);
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     SectionRow:
+ *       type: object
+ *       required:
+ *         - machine
+ *         - shift
+ *         - production_kg
+ *       properties:
+ *         machine:
+ *           type: string
+ *         shift:
+ *           type: string
+ *         production_kg:
+ *           type: number
+ *           minimum: 0
+ *         required_qty:
+ *           type: number
+ *           minimum: 0
+ *     Production:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: string
+ *         date:
+ *           type: string
+ *           format: date
+ *         blow_room:
+ *           type: object
+ *           properties:
+ *             total:
+ *               type: number
+ *             remarks:
+ *               type: string
+ *         carding:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/SectionRow'
+ *         drawing:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/SectionRow'
+ *         framing:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/SectionRow'
+ *         simplex:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/SectionRow'
+ *         spinning:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/SectionRow'
+ *         autoconer:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/SectionRow'
+ *         total:
+ *           type: number
+ *         remarks:
+ *           type: string
+ *         created_at:
+ *           type: string
+ *           format: date-time
+ *         updated_at:
+ *           type: string
+ *           format: date-time
+ */
 
 module.exports = router;

@@ -16,7 +16,6 @@ async function extractFromImage(imagePath) {
   const preprocessedPath = imagePath.replace(/(\.\w+)$/, '_processed$1');
 
   await preprocessImage(imagePath, preprocessedPath);
-  console.log(`🧪 Preprocessed image saved at: ${preprocessedPath}`);
 
   const result = await Tesseract.recognize(preprocessedPath, 'eng', {
     logger: m => console.log(`[OCR] ${m.status}: ${Math.floor((m.progress || 0) * 100)}%`)
@@ -38,7 +37,6 @@ async function extractFromImage(imagePath) {
     process.exit(1);
   }
 
-  console.log(`📂 Processing image: ${filePath}`);
   const text = await extractFromImage(filePath);
 
   console.log('\n📄 Extracted Text:\n');

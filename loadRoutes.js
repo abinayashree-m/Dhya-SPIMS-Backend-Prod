@@ -28,7 +28,6 @@ const loadRoutes = (app, dir = path.join(__dirname, 'routes')) => {
       }[file.replace('.routes.js', '')] || routePath;
 
       app.use(mountPath, router);
-      console.log(`🔗 Route loaded: ${mountPath}`);
     }
   });
 };

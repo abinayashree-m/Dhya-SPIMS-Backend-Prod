@@ -3,60 +3,54 @@ const shadeService = require('../services/shades.service');
 // ✅ Create
 exports.createShade = async (req, res) => {
   try {
-    console.log('🛎️ Received POST /shades');
-    console.log('📥 Body:', JSON.stringify(req.body, null, 2));
-
     const {
       shade_code,
       shade_name,
-      fibre_composition = [],
+      blend_composition = [],
       raw_cotton_composition = [],
     } = req.body;
 
     // Basic required validations
-    if (!shade_code || !shade_name || !Array.isArray(fibre_composition)) {
-      console.log('⛔ Missing required fields');
+    if (!shade_code || !shade_name) {
       return res.status(400).json({
-        error: 'shade_code, shade_name, and fibre_composition[] are required.',
+        error: 'shade_code and shade_name are required.',
       });
     }
 
-    if (fibre_composition.length === 0 && raw_cotton_composition.length === 0) {
-      console.log('⛔ No composition provided');
+    // Convert raw_cotton_composition to array if it's an object
+    const rawCottonArray = Array.isArray(raw_cotton_composition) 
+      ? raw_cotton_composition 
+      : raw_cotton_composition 
+        ? [raw_cotton_composition] 
+        : [];
+
+    if (blend_composition.length === 0 && rawCottonArray.length === 0) {
       return res.status(400).json({
         error: 'At least one fibre or raw cotton composition is required.',
       });
     }
 
-    // Ensure all composition percentages are numbers
-    const fibreTotal = fibre_composition.reduce((sum, f) => sum + Number(f.percentage || 0), 0);
-    const rawCottonTotal = raw_cotton_composition.reduce(
-      (sum, r) => sum + Number(r.percentage || 0),
-      0
-    );
+    // Calculate total percentages
+    const fibreTotal = blend_composition.reduce((sum, f) => sum + Number(f.percentage || 0), 0);
+    const rawCottonTotal = rawCottonArray.reduce((sum, r) => sum + Number(r.percentage || 0), 0);
     const totalPercentage = fibreTotal + rawCottonTotal;
 
-    console.log('📊 Total %:', totalPercentage);
-
-    if (totalPercentage !== 100) {
-      console.log('⛔ Invalid % sum:', totalPercentage);
+    if (Math.abs(totalPercentage - 100) > 0.01) { // Allow for small floating point differences
       return res.status(400).json({
         error: `Total percentage must equal 100%. Received: ${totalPercentage}%`,
       });
     }
 
-    // Call service
+    // Call service with normalized data
     const shade = await shadeService.createShade({
       shade_code,
       shade_name,
-      fibre_composition,
-      raw_cotton_composition,
+      fibre_composition: blend_composition,
+      raw_cotton_composition: rawCottonArray,
     });
 
-    console.log('✅ Created Shade:', shade.id);
     res.status(201).json(shade);
   } catch (err) {
-    console.error('🔥 Error in createShade:', err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -68,7 +62,6 @@ exports.getAllShades = async (req, res) => {
     const shades = await shadeService.getAllShades({ fibre_id });
     res.json(shades);
   } catch (err) {
-    console.error('❌ Error in getAllShades:', err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -82,7 +75,6 @@ exports.getShadeById = async (req, res) => {
     }
     res.json(shade);
   } catch (err) {
-    console.error('❌ Error in getShadeById:', err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -102,7 +94,6 @@ exports.updateShade = async (req, res) => {
     const updated = await shadeService.updateShade(req.params.id, req.body);
     res.json(updated);
   } catch (err) {
-    console.error('❌ Error in updateShade:', err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -110,11 +101,26 @@ exports.updateShade = async (req, res) => {
 // ✅ Delete
 exports.deleteShade = async (req, res) => {
   try {
-    await shadeService.deleteShade(req.params.id);
-    res.status(204).send();
+    const result = await shadeService.deleteShade(req.params.id);
+    
+    if (!result.success) {
+      if (result.code === 'SHADE_NOT_FOUND') {
+        return res.status(404).json(result);
+      }
+      if (result.code === 'SHADE_IN_USE') {
+        return res.status(409).json(result);
+      }
+      return res.status(500).json(result);
+    }
+
+    res.status(200).json(result);
   } catch (err) {
-    console.error('❌ Error in deleteShade:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ 
+      success: false,
+      error: 'Internal server error',
+      code: 'SERVER_ERROR',
+      details: err.message 
+    });
   }
 };
 
@@ -124,7 +130,6 @@ exports.getStockSummary = async (req, res) => {
     const summary = await shadeService.getShadeStockSummary();
     res.json(summary);
   } catch (err) {
-    console.error('❌ Error in getStockSummary:', err);
     res.status(500).json({ error: err.message });
   }
 };

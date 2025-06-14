@@ -98,8 +98,6 @@ async function sendBulkMarketingEmail({
       subject,
       html: fullHtml,
     });
-
-    console.log(`📧 Sent to: ${to}`);
   }
 }
 

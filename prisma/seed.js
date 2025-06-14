@@ -10,8 +10,6 @@ async function main() {
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rows = xlsx.utils.sheet_to_json(sheet);
 
-  console.log(`📄 Loaded ${rows.length} rows from Excel`);
-
   let fibreCounter = 1;
 
   const existingFibres = await prisma.fibres.findMany();
@@ -27,7 +25,6 @@ async function main() {
     const category_name = row.category?.trim() || null;
 
     if (!fibre_name) {
-      console.warn('⚠️ Missing fibre name, skipping row:', row);
       continue;
     }
 
@@ -42,7 +39,6 @@ async function main() {
     });
 
     if (existingFibre) {
-      console.log(`⚡ Skipped existing fibre: ${fibre_name}`);
       continue;
     }
 
@@ -64,8 +60,6 @@ async function main() {
       });
       if (category) {
         finalCategoryId = category.id;
-      } else {
-        console.warn(`⚠️ Category not found for: ${category_name}`);
       }
     }
 
@@ -82,16 +76,11 @@ async function main() {
         category_id: finalCategoryId,
       },
     });
-
-    console.log(`✅ Inserted fibre: ${fibre_name} (${fibre_code})`);
   }
-
-  console.log('🌟 Fibre Seeding Complete!');
 }
 
 main()
   .catch((e) => {
-    console.error('❌ Seeding failed:', e);
     process.exit(1);
   })
   .finally(async () => {

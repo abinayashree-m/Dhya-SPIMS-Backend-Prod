@@ -13,29 +13,25 @@ exports.parseFileAndCreate = async (file, user) => {
 
   let parsedData;
   try {
-    console.log(`[Node.js DEBUG] 🧠 Calling Python AI service at ${PYTHON_AI_SERVICE_URL}`);
     const response = await axios.post(PYTHON_AI_SERVICE_URL, formData, {
       headers: {
         ...formData.getHeaders(),
       },
     });
 
-    console.log('[Node.js DEBUG] ✅ AI Service returned a successful response (200 OK). Data:', JSON.stringify(response.data, null, 2));
-
     parsedData = response.data.po_data;
     if (!parsedData || !parsedData.poNumber) {
         throw new Error('AI service returned success, but the parsed data is invalid or missing a PO Number.');
     }
   } catch (error) {
-    console.error('❌ [Node.js DEBUG] Failed to get a valid response from Python AI service.');
-    
     if (error.response) {
-      console.error('[Node.js DEBUG] 🚨 Error Status:', error.response.status);
-      console.error('[Node.js DEBUG] 🚨 Error Data:', JSON.stringify(error.response.data, null, 2));
+      if (error.response.status === 400) {
+        throw new Error('AI service returned 400 Bad Request. Please check the file format.');
+      }
     } else if (error.request) {
-      console.error('[Node.js DEBUG] 🚨 No response received from AI service:', error.request);
+      throw new Error('AI service request failed. Please check your internet connection.');
     } else {
-      console.error('[Node.js DEBUG] 🚨 Error setting up request:', error.message);
+      throw new Error('AI service setup failed. Please try again later.');
     }
     
     throw new Error('Could not parse document with AI service.');
@@ -89,14 +85,12 @@ exports.parseFileAndCreate = async (file, user) => {
     }))
   };
 
-  console.log('💾 Saving parsed data to database...');
   return await exports.create(createPayload, user);
 };
 
 
 exports.getAll = async (user) => {
   if (!user || !user.tenantId) {
-    console.warn('⚠️ Missing user or tenantId in getAll');
     return [];
   }
 
@@ -263,11 +257,6 @@ exports.verify = async (id, user) => {
 
 // ✅ Convert PO → SO
 exports.convertToSalesOrder = async (poId, user, data) => {
-  console.log('🔍 Starting PO to SO conversion...');
-  console.log('📦 PO ID:', poId);
-  console.log('👤 User:', JSON.stringify(user, null, 2));
-  console.log('📝 Conversion Data:', JSON.stringify(data, null, 2));
-
   const po = await prisma.purchase_orders.findFirst({
     where: {
       id: poId,
@@ -276,8 +265,6 @@ exports.convertToSalesOrder = async (poId, user, data) => {
     },
     include: { items: true },
   });
-
-  console.log('📄 Found PO:', JSON.stringify(po, null, 2));
 
   if (!po) throw new Error('Verified Purchase Order not found');
 
@@ -291,13 +278,9 @@ exports.convertToSalesOrder = async (poId, user, data) => {
     },
   });
 
-  console.log('🎨 Found Shade:', JSON.stringify(shade, null, 2));
-  console.log('👥 Found Buyer:', JSON.stringify(buyer, null, 2));
-
   if (!shade || !buyer) throw new Error('Missing required shade or buyer');
 
   const totalQty = po.items.reduce((sum, item) => sum + parseFloat(item.quantity), 0);
-  console.log('📊 Total Quantity:', totalQty);
 
   const newSO = await prisma.orders.create({
     data: {
@@ -312,8 +295,6 @@ exports.convertToSalesOrder = async (poId, user, data) => {
       created_by: user.id,
     },
   });
-
-  console.log('✅ Created Sales Order:', JSON.stringify(newSO, null, 2));
 
   await prisma.purchase_orders.update({
     where: { id: poId },

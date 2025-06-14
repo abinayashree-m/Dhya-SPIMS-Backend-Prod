@@ -97,6 +97,4 @@ app.use('/purchase-orders', require('./routes/purchaseOrders.routes'));
 app.use('/parse-purchase-order', parseRoutes);
 // ✅ Start Server
 const PORT = process.env.PORT || 5001;
-app.listen(PORT, () => {
-  console.log(`🚀 SPIMS API server running at: http://localhost:${PORT}`);
-});
+app.listen(PORT);
