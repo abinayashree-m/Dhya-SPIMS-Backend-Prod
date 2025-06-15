@@ -105,9 +105,16 @@ async function updateShade(id, data) {
 }
 
 // ✅ Get all shades
-const getAllShades = async () => {
+const getAllShades = async (tenant_id) => {
   try {
     const shades = await prisma.shades.findMany({
+      where: {
+        orders: {
+          some: {
+            tenant_id
+          }
+        }
+      },
       orderBy: { created_at: 'desc' },
       include: {
         shade_fibres: {
@@ -143,10 +150,17 @@ const getAllShades = async () => {
 };
 
 // ✅ Get shade by ID
-const getShadeById = async (id) => {
+const getShadeById = async (id, tenant_id) => {
   try {
     const shade = await prisma.shades.findFirst({
-      where: { id },
+      where: {
+        id,
+        orders: {
+          some: {
+            tenant_id
+          }
+        }
+      },
       include: {
         shade_fibres: {
           include: {

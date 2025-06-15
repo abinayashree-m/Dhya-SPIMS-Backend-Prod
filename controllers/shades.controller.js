@@ -26,10 +26,11 @@ exports.createShade = async (req, res) => {
 // ✅ Get all (optional filter)
 exports.getAllShades = async (req, res) => {
   try {
-    const shades = await shadesService.getAllShades();
+    const shades = await shadesService.getAllShades(req.user.tenantId);
     res.json(shades);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch shades' });
+    console.error('Error in getAllShades controller:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch shades' });
   }
 };
 
