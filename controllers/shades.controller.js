@@ -23,28 +23,25 @@ exports.createShade = async (req, res) => {
   }
 };
 
-// ✅ Get all (optional filter)
-exports.getAllShades = async (req, res) => {
+// ✅ Get all shades
+exports.getAllShades = async (_req, res) => {
   try {
-    const shades = await shadesService.getAllShades(req.user.tenantId);
+    const shades = await shadesService.getAllShades();
     res.json(shades);
   } catch (error) {
-    console.error('Error in getAllShades controller:', error);
-    res.status(500).json({ error: error.message || 'Failed to fetch shades' });
+    console.error('Error fetching shades:', error);
+    res.status(500).json({ error: error.message });
   }
 };
 
-// ✅ Get by ID
+// ✅ Get shade by ID
 exports.getShadeById = async (req, res) => {
   try {
-    const { id } = req.params;
-    const shade = await shadesService.getShadeById(id, req.user.tenantId);
-    if (!shade) {
-      return res.status(404).json({ error: 'Shade not found' });
-    }
+    const shade = await shadesService.getShadeById(req.params.id);
     res.json(shade);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch shade' });
+    console.error('Error fetching shade:', error);
+    res.status(500).json({ error: error.message });
   }
 };
 

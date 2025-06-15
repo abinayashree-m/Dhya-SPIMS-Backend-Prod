@@ -36,7 +36,6 @@ model fibres {
   fibre_usage_logs    fibre_usage_logs[]
   category            fibre_categories?        @relation(fields: [category_id], references: [id])
   shade_fibres        shade_fibres[]
-  tenant_id           String
 }
 
 model blend_fibres {
@@ -60,15 +59,15 @@ model blends {
 }
 
 model shades {
-  id                     String                   @id @default(uuid()) @db.Uuid
-  shade_code             String
-  shade_name             String
-  created_at             DateTime?                @default(now()) @db.Timestamp(6)
-  description            String?
-  updated_at             DateTime?                @default(now()) @db.Timestamp(6)
-  percentage             String?
-  orders                 orders[]
-  shade_fibres           shade_fibres[]
+  id                      String                    @id @default(uuid()) @db.Uuid
+  shade_code              String
+  shade_name              String
+  created_at              DateTime?                 @default(now()) @db.Timestamp(6)
+  description             String?
+  updated_at              DateTime?                 @default(now()) @db.Timestamp(6)
+  percentage              String?
+  orders                  orders[]
+  shade_fibres            shade_fibres[]
   raw_cotton_compositions raw_cotton_compositions[]
 }
 
@@ -239,32 +238,32 @@ model orders {
 }
 
 model productions {
-  id            String   @id @default(uuid()) @db.Uuid
-  date          DateTime
-  tenant_id     String   @db.Uuid
-  created_by    String   @db.Uuid
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
-  section       String   // Added section field
+  id         String   @id @default(uuid()) @db.Uuid
+  date       DateTime
+  tenant_id  String   @db.Uuid
+  created_by String   @db.Uuid
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  section    String // Added section field
 
   // Section-wise data
-  blow_room     Json     // { total: number, remarks: string }
-  carding       Json[]   // Array of { machine: string, shift: string, production_kg: number, required_qty: number, remarks: string }
-  drawing       Json[]   // Same structure as carding
-  framing       Json[]   // Same structure as carding
-  simplex       Json[]   // Same structure as carding
-  spinning      Json[]   // Same structure as carding
-  autoconer     Json[]   // Same structure as carding
-  
-  total         Decimal  @default(0)
-  remarks       String?
+  blow_room Json // { total: number, remarks: string }
+  carding   Json[] // Array of { machine: string, shift: string, production_kg: number, required_qty: number, remarks: string }
+  drawing   Json[] // Same structure as carding
+  framing   Json[] // Same structure as carding
+  simplex   Json[] // Same structure as carding
+  spinning  Json[] // Same structure as carding
+  autoconer Json[] // Same structure as carding
+
+  total   Decimal @default(0)
+  remarks String?
 
   // Relations
-  tenant        tenants  @relation(fields: [tenant_id], references: [id])
-  creator       users    @relation(fields: [created_by], references: [id])
-  order         orders?  @relation(fields: [order_id], references: [id])
-  order_id      String?  @db.Uuid
-  logs          production_logs[]
+  tenant   tenants           @relation(fields: [tenant_id], references: [id])
+  creator  users             @relation(fields: [created_by], references: [id])
+  order    orders?           @relation(fields: [order_id], references: [id])
+  order_id String?           @db.Uuid
+  logs     production_logs[]
 
   @@unique([date, tenant_id])
   @@index([date])
@@ -349,15 +348,15 @@ model fibre_transfers {
 }
 
 model raw_cotton_compositions {
-  id            String   @id @default(uuid()) @db.Uuid
-  shade_id      String   @db.Uuid
-  cotton_id     String   @db.Uuid
-  percentage    Decimal  @db.Decimal(5, 2)
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
+  id         String   @id @default(uuid()) @db.Uuid
+  shade_id   String   @db.Uuid
+  cotton_id  String   @db.Uuid
+  percentage Decimal  @db.Decimal(5, 2)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
-  shade         shades   @relation(fields: [shade_id], references: [id])
-  cotton        cottons  @relation(fields: [cotton_id], references: [id])
+  shade  shades  @relation(fields: [shade_id], references: [id])
+  cotton cottons @relation(fields: [cotton_id], references: [id])
 
   @@unique([shade_id, cotton_id])
   @@index([shade_id])
@@ -365,31 +364,30 @@ model raw_cotton_compositions {
 }
 
 model cottons {
-  id            String   @id @default(uuid()) @db.Uuid
-  lot_number    String?
-  stock_kg      Decimal? @db.Decimal(10, 2)
-  grade         String?
-  source        String?
-  notes         String?
-  created_at    DateTime @default(now())
-  updated_at    DateTime? @updatedAt
-  compositions  raw_cotton_compositions[]
+  id           String                    @id @default(uuid()) @db.Uuid
+  lot_number   String?
+  stock_kg     Decimal?                  @db.Decimal(10, 2)
+  grade        String?
+  source       String?
+  notes        String?
+  created_at   DateTime                  @default(now())
+  updated_at   DateTime?                 @updatedAt
+  compositions raw_cotton_compositions[]
 }
 
 model employees {
-  id          String   @id @default(uuid())
-  name        String
-  token_no    String       @unique
-  shift_rate  Decimal      @db.Decimal(10, 2)
-  aadhar_no   String       @unique
-  bank_acc_1  String
-  bank_acc_2  String?
-  department  String?
-  join_date   DateTime?
-  created_at  DateTime     @default(now())
-  updated_at  DateTime     @default(now()) @updatedAt
-  Attendance  Attendance[]
-  tenant_id   String
+  id         String       @id @default(uuid())
+  name       String
+  token_no   String       @unique
+  shift_rate Decimal      @db.Decimal(10, 2)
+  aadhar_no  String       @unique
+  bank_acc_1 String
+  bank_acc_2 String?
+  department String?
+  join_date  DateTime?
+  created_at DateTime     @default(now())
+  updated_at DateTime     @default(now()) @updatedAt
+  Attendance Attendance[]
 }
 
 model MailingList {

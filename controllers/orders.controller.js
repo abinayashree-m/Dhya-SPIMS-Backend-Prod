@@ -117,125 +117,72 @@ const bulkImportOrders = async (req, res) => {
 
 const getAllOrders = async (req, res) => {
   try {
-    const orders = await orderService.getAllOrders(req.user.tenantId);
+    const orders = await orderService.getAllOrders();
     res.json(orders);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch orders' });
+    console.error('Error fetching orders:', error);
+    res.status(500).json({ error: error.message });
   }
 };
 
 const getOrderById = async (req, res) => {
   try {
-    const { id } = req.params;
-    const order = await orderService.getOrderById(id, req.user.tenantId);
+    const order = await orderService.getOrderById(req.params.id);
     if (!order) {
       return res.status(404).json({ error: 'Order not found' });
     }
     res.json(order);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch order' });
+    console.error('Error fetching order:', error);
+    res.status(500).json({ error: error.message });
   }
 };
 
 const createOrder = async (req, res) => {
   try {
-    const order = await orderService.createOrder(req.body, req.user.tenantId);
-
-    // 🔁 Fetch buyer and shade info for email
-    const [buyer, shade] = await Promise.all([
-      prisma.buyers.findUnique({ where: { id: order.buyer_id } }),
-      prisma.shades.findUnique({
-        where: { id: order.shade_id },
-        include: { raw_cotton_composition: true },
-      }),
-    ]);
-
-    // ✉️ Trigger email
-    if (buyer?.email) {
-      await sendOrderConfirmationEmail({
-        to: buyer.email,
-        buyerName: buyer.name,
-        orderNumber: order.order_number,
-        count: order.count,
-        quantity: order.quantity_kg,
-        tenant_id: order.tenant_id,
-        shadeCode: shade?.shade_code ?? '-',
-        orderDate: order.created_at,
-        deliveryDate: order.delivery_date,
-        cc: ['dharsan@dhya.in'],
-        reply_to: ['support@dhya.in'],
-      });
-    }
-
+    const order = await orderService.createOrder(req.body);
     res.status(201).json(order);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to create order' });
+    console.error('Error creating order:', error);
+    res.status(500).json({ error: error.message });
   }
 };
 
 const updateOrder = async (req, res) => {
   try {
-    const { id } = req.params;
-    
-    // Validate ID format
-    if (!isUUID(id)) {
-      return res.status(400).json({ error: 'Invalid order ID format' });
-    }
-
-    // Validate required fields
-    const { buyer_id, shade_id, quantity_kg, delivery_date } = req.body;
-    if (buyer_id && !isUUID(buyer_id)) {
-      return res.status(400).json({ error: 'Invalid buyer ID format' });
-    }
-    if (shade_id && !isUUID(shade_id)) {
-      return res.status(400).json({ error: 'Invalid shade ID format' });
-    }
-    if (quantity_kg !== undefined && (isNaN(quantity_kg) || Number(quantity_kg) <= 0)) {
-      return res.status(400).json({ error: 'Invalid quantity value' });
-    }
-    if (delivery_date && isNaN(Date.parse(delivery_date))) {
-      return res.status(400).json({ error: 'Invalid delivery date format' });
-    }
-
-    const order = await orderService.updateOrder(id, req.body, req.user.tenantId);
+    const order = await orderService.updateOrder(req.params.id, req.body);
     res.json(order);
   } catch (error) {
-    console.error('Order update error:', error);
-    if (error.message === 'Order not found') {
-      return res.status(404).json({ error: error.message });
-    }
-    if (error.message.includes('Invalid') || error.message.includes('already exists')) {
-      return res.status(400).json({ error: error.message });
-    }
-    res.status(500).json({ error: 'Failed to update order: ' + error.message });
+    console.error('Error updating order:', error);
+    res.status(500).json({ error: error.message });
   }
 };
 
 const updateOrderStatus = async (req, res) => {
   try {
-    const { id } = req.params;
     const { status } = req.body;
-    const order = await orderService.updateOrderStatus(id, status, req.user.tenantId);
+    const order = await orderService.updateOrderStatus(req.params.id, status);
     res.json(order);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to update order status' });
+    console.error('Error updating order status:', error);
+    res.status(500).json({ error: error.message });
   }
 };
 
 const deleteOrder = async (req, res) => {
   try {
-    const { id } = req.params;
-    await orderService.deleteOrder(id, req.user.tenantId);
-    res.json({ message: 'Order deleted successfully' });
+    await orderService.deleteOrder(req.params.id);
+    res.status(204).send();
   } catch (error) {
-    res.status(500).json({ error: 'Failed to delete order' });
+    console.error('Error deleting order:', error);
+    res.status(500).json({ error: error.message });
   }
 };
 
 const getOrderProgressDetails = async (req, res) => {
   try {
     const { id } = req.params;
-    const progress = await orderService.getProgressDetails(id, req.user.tenantId);
+    const progress = await orderService.getProgressDetails(id);
     res.json(progress);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch progress details' });

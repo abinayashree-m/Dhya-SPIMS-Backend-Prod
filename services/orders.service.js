@@ -1,11 +1,10 @@
 const prisma = require('../prisma/client');
 const { Decimal } = require('@prisma/client/runtime/library');
 
-// 1. Get all orders for a tenant
-exports.getAllOrders = async (tenant_id) => {
+// 1. Get all orders
+exports.getAllOrders = async () => {
   try {
     return await prisma.orders.findMany({
-      where: { tenant_id },
       include: {
         buyer: true,
         shade: {
@@ -31,10 +30,10 @@ exports.getAllOrders = async (tenant_id) => {
 };
 
 // 2. Get order by ID
-exports.getOrderById = async (id, tenant_id) => {
+exports.getOrderById = async (id) => {
   try {
-    return await prisma.orders.findFirst({
-      where: { id, tenant_id },
+    return await prisma.orders.findUnique({
+      where: { id },
       include: {
         buyer: true,
         shade: {
@@ -59,15 +58,14 @@ exports.getOrderById = async (id, tenant_id) => {
 };
 
 // 3. Create a new order
-exports.createOrder = async (data, tenant_id) => {
+exports.createOrder = async (data) => {
   try {
     const { buyer_id, shade_id, ...orderData } = data;
     return await prisma.orders.create({
       data: {
         ...orderData,
         buyer: { connect: { id: buyer_id } },
-        shade: { connect: { id: shade_id } },
-        tenant_id
+        shade: { connect: { id: shade_id } }
       },
       include: {
         buyer: true,
@@ -80,7 +78,7 @@ exports.createOrder = async (data, tenant_id) => {
 };
 
 // 4. Update full order by ID
-exports.updateOrder = async (id, data, tenantId) => {
+exports.updateOrder = async (id, data) => {
   try {
     // Check if order exists
     const existingOrder = await prisma.orders.findUnique({
@@ -149,12 +147,7 @@ exports.updateOrder = async (id, data, tenantId) => {
             connect: {
               id: data.shade_id
             }
-          } : undefined,
-          tenant: {
-            connect: {
-              id: tenantId
-            }
-          }
+          } : undefined
         },
         include: {
           buyer: true,
@@ -213,8 +206,8 @@ exports.updateOrder = async (id, data, tenantId) => {
   }
 };
 
-// 5. Update only the status and handle fibre stock usage logging if moving to in_progress
-exports.updateOrderStatus = async (id, status, tenant_id) => {
+// 5. Update only the status
+exports.updateOrderStatus = async (id, status) => {
   try {
     return await prisma.orders.update({
       where: { id },
@@ -226,7 +219,7 @@ exports.updateOrderStatus = async (id, status, tenant_id) => {
 };
 
 // 6. Delete order
-exports.deleteOrder = async (id, tenant_id) => {
+exports.deleteOrder = async (id) => {
   try {
     return await prisma.orders.delete({
       where: { id }
