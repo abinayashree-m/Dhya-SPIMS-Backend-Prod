@@ -137,7 +137,7 @@ exports.getLowStockFibres = async () => {
     });
   } catch (error) {
     console.error('🔥 Error in getLowStockFibres:', error);
-    throw new Error('Failed to fetch fibre');
+    throw error; // Throw the original error for better debugging
   }
 };
 
