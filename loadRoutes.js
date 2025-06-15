@@ -6,12 +6,16 @@ const loadRoutes = (app, dir = path.join(__dirname, 'routes')) => {
   fs.readdirSync(dir).forEach((file) => {
     const fullPath = path.join(dir, file);
 
-    // Only handle `.js` route files
-    if (fs.statSync(fullPath).isFile() && file.endsWith('.js')) {
-      const routePath = '/' + file.replace('.routes.js', '').replace('.js', '');
+    // Skip if not a .js file or if file is empty
+    if (!file.endsWith('.js') || fs.statSync(fullPath).size === 0) {
+      return;
+    }
+
+    try {
+      const routeName = file.replace('.routes.js', '').replace('.js', '');
       const router = require(fullPath);
 
-      // Special case handling
+      // Special case handling for route paths
       const mountPath = {
         auth: '/auth',
         users: '/users',
@@ -19,15 +23,28 @@ const loadRoutes = (app, dir = path.join(__dirname, 'routes')) => {
         register: '/register',
         blends: '/blends',
         fibres: '/fibres',
-        shades: '/shades',
+        shades: '/api/shades',
         orders: '/orders',
         buyers: '/buyers',
-        productions: '/productions',
+        production: '/api/productions',
         settings: '/settings',
         userSettings: '/user-settings',
-      }[file.replace('.routes.js', '')] || routePath;
+        dashboard: '/api/dashboard',
+        purchaseOrders: '/api/purchase-orders',
+        mailingLists: '/api/mailing-lists',
+        emailTemplates: '/email-templates',
+        potentialBuyers: '/potential-buyers'
+      }[routeName] || `/${routeName}`;
 
-      app.use(mountPath, router);
+      // Only mount if router is a valid Express router
+      if (router && typeof router === 'function') {
+        console.log(`Mounting route: ${mountPath} from ${file}`);
+        app.use(mountPath, router);
+      } else {
+        console.warn(`Warning: Invalid router in ${file} - skipping`);
+      }
+    } catch (error) {
+      console.error(`Error loading route ${file}:`, error.message);
     }
   });
 };

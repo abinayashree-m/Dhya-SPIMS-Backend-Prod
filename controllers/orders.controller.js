@@ -111,38 +111,35 @@ const bulkImportOrders = async (req, res) => {
       errors
     });
   } catch (err) {
-    console.error('Bulk upload error:', err);
     res.status(500).json({ error: 'Failed to process Excel file' });
   }
 };
 
 const getAllOrders = async (req, res) => {
-  const tenant_id = req.user?.tenantId;
-  if (!tenant_id) return res.status(401).json({ error: 'Unauthorized: tenant_id not found in token' });
-
   try {
-    const orders = await orderService.getAllOrders(tenant_id);
+    const orders = await orderService.getAllOrders(req.user.tenantId);
     res.json(orders);
-  } catch (err) {
-    console.error('Error fetching orders:', err);
+  } catch (error) {
     res.status(500).json({ error: 'Failed to fetch orders' });
   }
 };
 
 const getOrderById = async (req, res) => {
   try {
-    const order = await orderService.getOrderById(req.params.id);
-    if (!order) return res.status(404).json({ error: 'Order not found' });
+    const { id } = req.params;
+    const order = await orderService.getOrderById(id, req.user.tenantId);
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
     res.json(order);
-  } catch (err) {
-    console.error('Error fetching order by ID:', err);
+  } catch (error) {
     res.status(500).json({ error: 'Failed to fetch order' });
   }
 };
 
 const createOrder = async (req, res) => {
   try {
-    const order = await orderService.createOrder(req.body);
+    const order = await orderService.createOrder(req.body, req.user.tenantId);
 
     // 🔁 Fetch buyer and shade info for email
     const [buyer, shade] = await Promise.all([
@@ -171,57 +168,77 @@ const createOrder = async (req, res) => {
     }
 
     res.status(201).json(order);
-  } catch (err) {
-    console.error('Error creating order:', err);
-    const code = err.message === 'Order number already exists' ? 409 : 500;
-    res.status(code).json({ error: err.message });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create order' });
   }
 };
 
 const updateOrder = async (req, res) => {
   try {
-    const updated = await orderService.updateOrder(req.params.id, req.body);
-    res.json(updated);
-  } catch (err) {
-    console.error('Error updating order:', err);
-    res.status(500).json({ error: 'Failed to update order' });
+    const { id } = req.params;
+    
+    // Validate ID format
+    if (!isUUID(id)) {
+      return res.status(400).json({ error: 'Invalid order ID format' });
+    }
+
+    // Validate required fields
+    const { buyer_id, shade_id, quantity_kg, delivery_date } = req.body;
+    if (buyer_id && !isUUID(buyer_id)) {
+      return res.status(400).json({ error: 'Invalid buyer ID format' });
+    }
+    if (shade_id && !isUUID(shade_id)) {
+      return res.status(400).json({ error: 'Invalid shade ID format' });
+    }
+    if (quantity_kg !== undefined && (isNaN(quantity_kg) || Number(quantity_kg) <= 0)) {
+      return res.status(400).json({ error: 'Invalid quantity value' });
+    }
+    if (delivery_date && isNaN(Date.parse(delivery_date))) {
+      return res.status(400).json({ error: 'Invalid delivery date format' });
+    }
+
+    const order = await orderService.updateOrder(id, req.body, req.user.tenantId);
+    res.json(order);
+  } catch (error) {
+    console.error('Order update error:', error);
+    if (error.message === 'Order not found') {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes('Invalid') || error.message.includes('already exists')) {
+      return res.status(400).json({ error: error.message });
+    }
+    res.status(500).json({ error: 'Failed to update order: ' + error.message });
   }
 };
 
 const updateOrderStatus = async (req, res) => {
-  const { status } = req.body;
-  const allowed = ['pending', 'in_progress', 'dispatched', 'completed'];
-
-  if (!allowed.includes(status)) {
-    return res.status(400).json({ error: 'Invalid status' });
-  }
-
   try {
-    const updated = await orderService.updateOrderStatus(req.params.id, status);
-    res.json(updated);
-  } catch (err) {
-    console.error('Error updating order status:', err);
-    res.status(500).json({ error: 'Failed to update status' });
+    const { id } = req.params;
+    const { status } = req.body;
+    const order = await orderService.updateOrderStatus(id, status, req.user.tenantId);
+    res.json(order);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update order status' });
   }
 };
 
 const deleteOrder = async (req, res) => {
   try {
-    await orderService.deleteOrder(req.params.id);
-    res.status(204).end();
-  } catch (err) {
-    console.error('Error deleting order:', err);
+    const { id } = req.params;
+    await orderService.deleteOrder(id, req.user.tenantId);
+    res.json({ message: 'Order deleted successfully' });
+  } catch (error) {
     res.status(500).json({ error: 'Failed to delete order' });
   }
 };
 
 const getOrderProgressDetails = async (req, res) => {
   try {
-    const result = await orderService.getOrderProgressDetails(req.params.id);
-    res.json(result);
-  } catch (err) {
-    console.error('Error getting progress details:', err);
-    res.status(500).json({ error: 'Failed to fetch order progress' });
+    const { id } = req.params;
+    const progress = await orderService.getProgressDetails(id, req.user.tenantId);
+    res.json(progress);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch progress details' });
   }
 };
 

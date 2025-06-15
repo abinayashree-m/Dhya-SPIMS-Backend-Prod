@@ -4,286 +4,236 @@ const { Decimal } = require('@prisma/client/runtime/library');
 // 1. Get all orders for a tenant
 exports.getAllOrders = async (tenant_id) => {
   try {
-  return await prisma.orders.findMany({
-    where: { tenant_id },
-    include: {
-      buyer: true,
-      shade: {
-        include: {
-          shade_fibres: {
-            include: {
-              fibre: true
-            }
-          },
-            raw_cotton_compositions: true,
-        }
-      }
-    },
-    orderBy: { created_at: 'desc' }
-  });
-  } catch (error) {
-    console.error('Error in getAllOrders:', error);
-    throw error;
-  }
-};
-
-// 2. Get order by ID
-exports.getOrderById = async (id) => {
-  return await prisma.orders.findUnique({
-    where: { id },
-    include: {
-      buyer: true,
-      shade: {
-        include: {
-          shade_fibres: {
-            include: {
-              fibre: true
-            }
-          },
-          raw_cotton_compositions: true,
-        }
-      }
-    }
-  });
-};
-
-// 3. Create a new order
-exports.createOrder = async (data) => {
-  const { buyer_id, shade_id, realisation, ...rest } = data;
-
-  const timestamp = Date.now().toString().slice(-6);
-  const order_number = `SO-${timestamp}`;
-
-  const existing = await prisma.orders.findUnique({
-    where: { order_number },
-  });
-
-  if (existing) {
-    throw new Error('Order number already exists (race condition)');
-  }
-
-  const createdOrder = await prisma.orders.create({
-    data: {
-      ...rest,
-      buyer_id,
-      shade_id,
-      order_number,
-      delivery_date: new Date(data.delivery_date),
-      status: data.status || 'pending',
-      realisation: realisation ? new Decimal(realisation) : undefined,
-      count: data.count !== undefined ? parseInt(data.count) : undefined,
-    },
-  });
-
-  return await prisma.orders.findUnique({
-    where: { id: createdOrder.id },
-    include: {
-      shade: {
-        include: {
-          shade_fibres: {
-            include: { fibre: true }
-          },
-          raw_cotton_compositions: true,
-        }
-      },
-      buyer: true,
-    },
-  });
-};
-
-// 4. Update full order by ID
-exports.updateOrder = async (id, data) => {
-  console.log('🔍 [updateOrder] Starting update for order:', {
-    id,
-    data: JSON.stringify(data, null, 2)
-  });
-
-  const { raw_cotton_updates, ...updateData } = data;
-  console.log('🔍 [updateOrder] Separated data:', {
-    raw_cotton_updates,
-    updateData: JSON.stringify(updateData, null, 2)
-  });
-
-  if (updateData.delivery_date) {
-    const parsedDate = new Date(updateData.delivery_date);
-    if (!isNaN(parsedDate)) {
-      updateData.delivery_date = parsedDate;
-      console.log('✅ [updateOrder] Parsed delivery date:', parsedDate);
-    } else {
-      console.log('⚠️ [updateOrder] Invalid delivery date, removing from update');
-      delete updateData.delivery_date;
-    }
-  }
-
-  if (updateData.count !== undefined) {
-    updateData.count = parseInt(updateData.count);
-    console.log('✅ [updateOrder] Parsed count:', updateData.count);
-  }
-
-  try {
-    console.log('🔍 [updateOrder] Attempting to update order with data:', JSON.stringify(updateData, null, 2));
-    const updatedOrder = await prisma.orders.update({
-      where: { id },
-      data: updateData,
-    });
-    console.log('✅ [updateOrder] Order updated successfully:', updatedOrder);
-
-    if (Array.isArray(raw_cotton_updates)) {
-      console.log('🔍 [updateOrder] Processing raw cotton updates:', raw_cotton_updates.length);
-      for (const rc of raw_cotton_updates) {
-        if (!rc.id) {
-          console.log('⚠️ [updateOrder] Skipping raw cotton update - missing ID');
-          continue;
-        }
-
-        console.log('🔍 [updateOrder] Updating raw cotton composition:', {
-          id: rc.id,
-          data: JSON.stringify(rc, null, 2)
-        });
-
-        // First get the composition to find the cotton_id
-        const composition = await prisma.raw_cotton_compositions.findUnique({
-          where: { id: rc.id },
-          include: { cotton: true }
-        });
-
-        if (!composition) {
-          console.log('⚠️ [updateOrder] Raw cotton composition not found:', rc.id);
-          continue;
-        }
-
-        // Update the cotton record
-        await prisma.cottons.update({
-          where: { id: composition.cotton_id },
-          data: {
-            lot_number: rc.lot_number,
-            stock_kg: rc.stock_kg ? new Decimal(rc.stock_kg) : undefined,
-            grade: rc.grade,
-            source: rc.source,
-            notes: rc.notes,
-          },
-        });
-        console.log('✅ [updateOrder] Raw cotton updated');
-      }
-    }
-
-    const result = await prisma.orders.findUnique({
-      where: { id },
+    return await prisma.orders.findMany({
+      where: { tenant_id },
       include: {
         buyer: true,
         shade: {
           include: {
-            shade_fibres: { include: { fibre: true } },
-            raw_cotton_compositions: {
-              include: { cotton: true }
+            shade_fibres: {
+              include: {
+                fibre: true
+              }
             },
-          },
-        },
+            raw_cotton_compositions: {
+              include: {
+                cotton: true
+              }
+            }
+          }
+        }
       },
+      orderBy: { created_at: 'desc' }
     });
-    console.log('✅ [updateOrder] Final result fetched:', {
-      id: result.id,
-      order_number: result.order_number,
-      status: result.status
+  } catch (error) {
+    throw new Error('Failed to fetch orders');
+  }
+};
+
+// 2. Get order by ID
+exports.getOrderById = async (id, tenant_id) => {
+  try {
+    return await prisma.orders.findFirst({
+      where: { id, tenant_id },
+      include: {
+        buyer: true,
+        shade: {
+          include: {
+            shade_fibres: {
+              include: {
+                fibre: true
+              }
+            },
+            raw_cotton_compositions: {
+              include: {
+                cotton: true
+              }
+            }
+          }
+        }
+      }
+    });
+  } catch (error) {
+    throw new Error('Failed to fetch order');
+  }
+};
+
+// 3. Create a new order
+exports.createOrder = async (data, tenant_id) => {
+  try {
+    const { buyer_id, shade_id, ...orderData } = data;
+    return await prisma.orders.create({
+      data: {
+        ...orderData,
+        buyer: { connect: { id: buyer_id } },
+        shade: { connect: { id: shade_id } },
+        tenant_id
+      },
+      include: {
+        buyer: true,
+        shade: true
+      }
+    });
+  } catch (error) {
+    throw new Error('Failed to create order');
+  }
+};
+
+// 4. Update full order by ID
+exports.updateOrder = async (id, data, tenantId) => {
+  try {
+    // Check if order exists
+    const existingOrder = await prisma.orders.findUnique({
+      where: { id },
+      include: {
+        shade: {
+          include: {
+            raw_cotton_compositions: {
+              include: {
+                cotton: true
+              }
+            },
+            shade_fibres: {
+              include: {
+                fibre: true
+              }
+            }
+          }
+        }
+      }
     });
 
-    return result;
+    if (!existingOrder) {
+      throw new Error('Order not found');
+    }
+
+    // Validate delivery date
+    if (data.delivery_date && isNaN(Date.parse(data.delivery_date))) {
+      throw new Error('Invalid delivery date format');
+    }
+
+    // Validate count
+    if (data.count !== undefined && (isNaN(data.count) || data.count <= 0)) {
+      throw new Error('Invalid count value');
+    }
+
+    // Validate quantity
+    if (data.quantity_kg !== undefined && (isNaN(data.quantity_kg) || Number(data.quantity_kg) <= 0)) {
+      throw new Error('Invalid quantity value');
+    }
+
+    // Validate realisation
+    if (data.realisation !== undefined && (isNaN(data.realisation) || Number(data.realisation) < 0 || Number(data.realisation) > 100)) {
+      throw new Error('Invalid realisation value. Must be between 0 and 100');
+    }
+
+    // Start a transaction to handle both order update and raw cotton compositions
+    const updatedOrder = await prisma.$transaction(async (prisma) => {
+      // Update the order
+      const order = await prisma.orders.update({
+        where: { id },
+        data: {
+          order_number: data.order_number,
+          quantity_kg: data.quantity_kg ? new Decimal(data.quantity_kg.toString()) : undefined,
+          delivery_date: data.delivery_date ? new Date(data.delivery_date) : undefined,
+          status: data.status,
+          created_by: data.created_by,
+          count: data.count,
+          realisation: data.realisation !== undefined ? new Decimal(data.realisation.toString()) : undefined,
+          buyer: data.buyer_id ? {
+            connect: {
+              id: data.buyer_id
+            }
+          } : undefined,
+          shade: data.shade_id ? {
+            connect: {
+              id: data.shade_id
+            }
+          } : undefined,
+          tenant: {
+            connect: {
+              id: tenantId
+            }
+          }
+        },
+        include: {
+          buyer: true,
+          shade: {
+            include: {
+              raw_cotton_compositions: {
+                include: {
+                  cotton: true
+                }
+              },
+              shade_fibres: {
+                include: {
+                  fibre: true
+                }
+              }
+            }
+          }
+        }
+      });
+
+      // Handle raw cotton compositions if provided
+      if (data.raw_cotton_compositions && Array.isArray(data.raw_cotton_compositions)) {
+        // Delete existing compositions
+        await prisma.raw_cotton_compositions.deleteMany({
+          where: { shade_id: order.shade.id }
+        });
+
+        // Create new compositions
+        if (data.raw_cotton_compositions.length > 0) {
+          await prisma.raw_cotton_compositions.createMany({
+            data: data.raw_cotton_compositions.map(rc => ({
+              shade_id: order.shade.id,
+              cotton_id: rc.cotton_id,
+              percentage: new Decimal(rc.percentage.toString())
+            }))
+          });
+        }
+      }
+
+      return order;
+    });
+
+    return updatedOrder;
   } catch (error) {
-    console.error('❌ [updateOrder] Error:', error);
-    console.error('❌ [updateOrder] Error stack:', error.stack);
+    console.error('Order update error:', error);
+    if (error.code === 'P2025') {
+      throw new Error('Order not found');
+    }
+    if (error.code === 'P2002') {
+      throw new Error('Order number already exists');
+    }
+    if (error.code === 'P2003') {
+      throw new Error('Invalid reference: buyer or shade not found');
+    }
     throw error;
   }
 };
 
 // 5. Update only the status and handle fibre stock usage logging if moving to in_progress
-exports.updateOrderStatus = async (id, status) => {
-  const allowed = ['pending', 'in_progress', 'completed', 'dispatched'];
-  if (!allowed.includes(status)) {
-    throw new Error('Invalid status');
-  }
-
-  const order = await prisma.orders.findUnique({
-    where: { id },
-    include: {
-      shade: {
-        include: {
-          shade_fibres: {
-            include: { fibre: true },
-          },
-          raw_cotton_compositions: true,
-        },
-      },
-    },
-  });
-
-  if (!order) throw new Error('Order not found');
-
-  // Enforce status transitions
-  const validTransitions = {
-    'pending': ['in_progress'],
-    'in_progress': ['completed'],
-    'completed': ['dispatched'],
-    'dispatched': []
-  };
-
-  if (!validTransitions[order.status].includes(status)) {
-    throw new Error(`Cannot transition from ${order.status} to ${status}`);
-  }
-
-  // Validate completion requirements
-  if (status === 'completed') {
-    const productions = await prisma.productions.findMany({
-      where: { order_id: id }
+exports.updateOrderStatus = async (id, status, tenant_id) => {
+  try {
+    return await prisma.orders.update({
+      where: { id },
+      data: { status }
     });
-
-    const sections = ['blow_room', 'carding', 'drawing', 'framing', 'simplex', 'spinning', 'autoconer'];
-    const hasAllSections = productions.some(p => 
-      sections.every(section => p[section] && 
-        (Array.isArray(p[section]) ? p[section].length > 0 : true))
-    );
-
-    if (!hasAllSections) {
-      throw new Error('All production sections must be completed before marking order as completed');
-    }
+  } catch (error) {
+    throw new Error('Failed to update order status');
   }
-
-  if (status === 'in_progress') {
-    if (!order.realisation) throw new Error('Realisation is required to move to in_progress');
-
-    const totalQty = new Decimal(order.quantity_kg).div(order.realisation).mul(100);
-
-    for (const sf of order.shade.shade_fibres) {
-      const requiredKg = totalQty.mul(sf.percentage).div(100);
-      const fibre = await prisma.fibres.findUnique({ where: { id: sf.fibre_id } });
-      if (!fibre) throw new Error(`Fibre not found: ${sf.fibre_id}`);
-
-      const newStock = new Decimal(fibre.stock_kg).minus(requiredKg);
-
-      await prisma.fibres.update({
-        where: { id: sf.fibre_id },
-        data: { stock_kg: newStock },
-      });
-
-      await prisma.fibre_usage_logs.create({
-        data: {
-          fibre_id: sf.fibre_id,
-          used_kg: requiredKg,
-        },
-      });
-    }
-  }
-
-  return await prisma.orders.update({
-    where: { id },
-    data: { status },
-  });
 };
 
 // 6. Delete order
-exports.deleteOrder = async (id) => {
-  return await prisma.orders.delete({
-    where: { id }
-  });
+exports.deleteOrder = async (id, tenant_id) => {
+  try {
+    return await prisma.orders.delete({
+      where: { id }
+    });
+  } catch (error) {
+    throw new Error('Failed to delete order');
+  }
 };
 
 // 7. Get detailed order progress

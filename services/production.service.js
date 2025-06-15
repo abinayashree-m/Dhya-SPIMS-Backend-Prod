@@ -1,312 +1,175 @@
 const prisma = require('../prisma/client');
 
-// Helper function to ensure UTC date
+// Helper function to convert date to UTC
 const toUTCDate = (date) => {
   const d = new Date(date);
   return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
 };
 
+// Helper function to get fixed required quantity for a section
+const getFixedRequiredQty = (section) => {
+  const requiredQtys = {
+    blow_room: 1000,
+    carding: 1000,
+    drawing: 1000,
+    framing: 1000,
+    simplex: 1000,
+    spinning: 1000,
+    autoconer: 1000
+  };
+  return requiredQtys[section] || 1000;
+};
+
 // Helper function to calculate section total
 const calculateSectionTotal = (section) => {
   if (!section) return 0;
-  
   if (Array.isArray(section)) {
-    return section.reduce((sum, row) => sum + (row.production_kg || 0), 0);
-  } else if (typeof section === 'object') {
-    return section.total || 0;
+    return section.reduce((sum, entry) => sum + Number(entry.production_kg || 0), 0);
   }
-  return 0;
+  return Number(section.total || 0);
 };
 
-// Helper function to calculate total production across all sections
+// Helper function to calculate total production
 const calculateTotal = (sections) => {
-  return [
-    calculateSectionTotal(sections.blow_room),
-    calculateSectionTotal(sections.carding),
-    calculateSectionTotal(sections.drawing),
-    calculateSectionTotal(sections.framing),
-    calculateSectionTotal(sections.simplex),
-    calculateSectionTotal(sections.spinning),
-    calculateSectionTotal(sections.autoconer)
-  ].reduce((sum, val) => sum + val, 0);
+  const sectionTotals = Object.entries(sections).map(([key, value]) => {
+    if (key === 'total') return 0;
+    return calculateSectionTotal(value);
+  });
+  return sectionTotals.reduce((sum, total) => sum + total, 0);
 };
 
 // Helper function to validate section data
 const validateSectionData = (section, sectionName) => {
-  if (!section) return;
-
-  if (Array.isArray(section)) {
-    section.forEach((row, index) => {
-      if (!row.machine || !row.shift || row.production_kg === undefined) {
-        throw new Error(`${sectionName} row ${index + 1} is missing required fields`);
-      }
-      if (row.production_kg < 0) {
-        throw new Error(`${sectionName} row ${index + 1} has invalid production quantity`);
-      }
-      if (row.required_qty !== undefined && row.production_kg > row.required_qty) {
-        throw new Error(`${sectionName} row ${index + 1} production exceeds required quantity`);
-      }
-    });
-  } else if (typeof section === 'object') {
-    if (section.total !== undefined && section.total < 0) {
-      throw new Error(`${sectionName} has invalid total quantity`);
-    }
+  if (!section) return false;
+  if (sectionName === 'blow_room') {
+    return typeof section === 'object' && !Array.isArray(section);
   }
+  return Array.isArray(section);
 };
 
 // Get production by date
-exports.getProductionByDate = async (date, tenantId) => {
+exports.getProductionByDate = async (date, tenant_id) => {
   try {
-    const startOfDay = toUTCDate(date);
-    const endOfDay = new Date(startOfDay);
-    endOfDay.setUTCHours(23, 59, 59, 999);
-
-    return await prisma.productions.findMany({
+    const utcDate = toUTCDate(date);
+    return await prisma.productions.findFirst({
       where: {
-        date: {
-          gte: startOfDay,
-          lte: endOfDay
-        },
-        tenant_id: tenantId
-      },
-      orderBy: {
-        created_at: 'desc'
+        date: utcDate,
+        tenant_id
       }
     });
   } catch (error) {
-    console.error('Error in getProductionByDate:', error);
-    throw error;
+    throw new Error('Failed to fetch production data');
   }
 };
 
-// Create production entry
-exports.createProduction = async (data, user) => {
+// Create or update production
+exports.createOrUpdateProduction = async (data, tenant_id) => {
   try {
-    const {
-      date,
-      blow_room,
-      carding,
-      drawing,
-      framing,
-      simplex,
-      spinning,
-      autoconer,
-      remarks
-    } = data;
+    const { date, ...productionData } = data;
+    const utcDate = toUTCDate(date);
 
-    // Validate section data if provided
-    if (blow_room) validateSectionData(blow_room, 'blow_room');
-    if (carding) validateSectionData(carding, 'carding');
-    if (drawing) validateSectionData(drawing, 'drawing');
-    if (framing) validateSectionData(framing, 'framing');
-    if (simplex) validateSectionData(simplex, 'simplex');
-    if (spinning) validateSectionData(spinning, 'spinning');
-    if (autoconer) validateSectionData(autoconer, 'autoconer');
-
-    // Calculate total production
-    const total = calculateTotal({
-      blow_room,
-      carding,
-      drawing,
-      framing,
-      simplex,
-      spinning,
-      autoconer
+    // Validate section data
+    const sections = ['blow_room', 'carding', 'drawing', 'framing', 'simplex', 'spinning', 'autoconer'];
+    sections.forEach(section => {
+      if (!validateSectionData(productionData[section], section)) {
+        throw new Error(`Invalid data format for ${section}`);
+      }
     });
 
-    // Check if production entry already exists for this date and tenant
+    // Calculate total production
+    const total = calculateTotal(productionData);
+
+    // Check if production exists for this date
     const existing = await prisma.productions.findFirst({
       where: {
-        date: new Date(date),
-        tenant_id: user.tenantId
+        date: utcDate,
+        tenant_id
       }
     });
 
     if (existing) {
-      // Update existing entry instead of creating new one
+      // Update existing production
       const updateData = {
-        blow_room: blow_room || existing.blow_room,
-        carding: carding || existing.carding,
-        drawing: drawing || existing.drawing,
-        framing: framing || existing.framing,
-        simplex: simplex || existing.simplex,
-        spinning: spinning || existing.spinning,
-        autoconer: autoconer || existing.autoconer,
+        ...productionData,
         total,
-        remarks: remarks || existing.remarks
+        updated_at: new Date()
       };
-      console.log('[Production API] Storing (update) in Prisma:', updateData);
+
       return await prisma.productions.update({
         where: { id: existing.id },
         data: updateData
       });
-    }
+    } else {
+      // Create new production
+      const createData = {
+        ...productionData,
+        date: utcDate,
+        total,
+        tenant_id
+      };
 
-    // Create new production entry
-    const createData = {
-      date: new Date(date),
-      tenant_id: user.tenantId,
-      created_by: user.id,
-      section: 'production',
-      blow_room: blow_room || {},
-      carding: carding || [],
-      drawing: drawing || [],
-      framing: framing || [],
-      simplex: simplex || [],
-      spinning: spinning || [],
-      autoconer: autoconer || [],
-      total,
-      remarks: remarks || ''
-    };
-    console.log('[Production API] Storing (create) in Prisma:', createData);
-    return await prisma.productions.create({
-      data: createData
+      return await prisma.productions.create({
+        data: createData
+      });
+    }
+  } catch (error) {
+    throw new Error('Failed to create/update production');
+  }
+};
+
+// Update production
+exports.updateProduction = async (id, data) => {
+  try {
+    const { date, ...updateData } = data;
+    
+    // Validate section data
+    const sections = ['blow_room', 'carding', 'drawing', 'framing', 'simplex', 'spinning', 'autoconer'];
+    sections.forEach(section => {
+      if (!validateSectionData(updateData[section], section)) {
+        throw new Error(`Invalid data format for ${section}`);
+      }
+    });
+
+    // Calculate total production
+    const total = calculateTotal(updateData);
+
+    return await prisma.productions.update({
+      where: { id },
+      data: {
+        ...updateData,
+        total,
+        updated_at: new Date()
+      }
     });
   } catch (error) {
-    console.error('Error in createProduction:', error);
-    throw error;
+    throw new Error('Failed to update production');
   }
 };
 
-// Update production entry
-exports.updateProduction = async (id, data, user) => {
-  const {
-    blow_room,
-    carding,
-    drawing,
-    framing,
-    simplex,
-    spinning,
-    autoconer,
-    remarks
-  } = data;
-
-  // Get existing entry
-  const existing = await prisma.productions.findFirst({
-    where: {
-      id,
-      tenant_id: user.tenantId
+// Get all productions for a tenant
+exports.getAllProductions = async (tenant_id, order_id) => {
+  try {
+    const where = { tenant_id };
+    
+    if (order_id) {
+      where.order_id = order_id;
     }
-  });
 
-  if (!existing) {
-    throw new Error('Production entry not found');
-  }
-
-  // Validate all sections if provided
-  if (blow_room) validateSectionData(blow_room, 'blow_room');
-  if (carding) validateSectionData(carding, 'carding');
-  if (drawing) validateSectionData(drawing, 'drawing');
-  if (framing) validateSectionData(framing, 'framing');
-  if (simplex) validateSectionData(simplex, 'simplex');
-  if (spinning) validateSectionData(spinning, 'spinning');
-  if (autoconer) validateSectionData(autoconer, 'autoconer');
-
-  // Calculate new total based on provided sections
-  const total = calculateTotal({
-    blow_room: blow_room || existing.blow_room,
-    carding: carding || existing.carding,
-    drawing: drawing || existing.drawing,
-    framing: framing || existing.framing,
-    simplex: simplex || existing.simplex,
-    spinning: spinning || existing.spinning,
-    autoconer: autoconer || existing.autoconer
-  });
-
-  // Prepare update data
-  const updateData = {
-    blow_room: blow_room || existing.blow_room,
-    carding: carding || existing.carding,
-    drawing: drawing || existing.drawing,
-    framing: framing || existing.framing,
-    simplex: simplex || existing.simplex,
-    spinning: spinning || existing.spinning,
-    autoconer: autoconer || existing.autoconer,
-    total,
-    remarks: remarks !== undefined ? remarks : existing.remarks,
-    updated_at: new Date()
-  };
-
-  console.log('[Production API] Updating production with data:', updateData);
-
-  // Update the production entry
-  return await prisma.productions.update({
-    where: { id },
-    data: updateData,
-    include: {
-      order: {
-        include: {
-          buyer: true,
-          shade: {
-            include: {
-              shade_fibres: {
-                include: {
-                  fibre: true
-                }
-              }
-            }
-          }
-        }
-      },
-      creator: true,
-      tenant: true,
-      logs: true
-    }
-  });
-};
-
-// Delete production entry
-exports.deleteProduction = async (id, user) => {
-  const existing = await prisma.productions.findFirst({
-    where: {
-      id,
-      tenant_id: user.tenantId
-    }
-  });
-
-  if (!existing) {
-    throw new Error('Production entry not found');
-  }
-
-  return await prisma.productions.delete({
-    where: { id }
-  });
-};
-
-// List all production entries
-exports.listProductions = async (user, { startDate, endDate, page = 1, limit = 10 }) => {
-  const where = {
-    tenant_id: user.tenantId
-  };
-
-  if (startDate && endDate) {
-    where.date = {
-      gte: toUTCDate(startDate),
-      lte: toUTCDate(endDate)
-    };
-  }
-
-  const [total, entries] = await Promise.all([
-    prisma.productions.count({ where }),
-    prisma.productions.findMany({
+    const results = await prisma.productions.findMany({
       where,
-      orderBy: {
-        date: 'desc'
-      },
-      skip: (page - 1) * limit,
-      take: limit
-    })
-  ]);
+      orderBy: { date: 'desc' },
+      include: {
+        order: true
+      }
+    });
 
-  return {
-    entries,
-    pagination: {
-      total,
-      page,
-      limit,
-      pages: Math.ceil(total / limit)
-    }
-  };
+    return results.map(production => ({
+      ...production,
+      date: production.date.toISOString().split('T')[0]
+    }));
+  } catch (error) {
+    throw new Error('Failed to fetch productions');
+  }
 };
 
 //
@@ -314,35 +177,6 @@ exports.listProductions = async (user, { startDate, endDate, page = 1, limit = 1
 // ✅ PRODUCTION MASTER ENTRIES
 // ==========================
 //
-
-exports.getAllProductions = async (tenant_id) => {
-  console.log('[Production API] Fetching all productions for tenant_id:', tenant_id);
-  const results = await prisma.productions.findMany({
-    where: { tenant_id },
-    include: {
-      order: {
-        include: {
-          buyer: true,
-          shade: {
-            include: {
-              shade_fibres: {
-                include: {
-                  fibre: true
-                }
-              }
-            }
-          }
-        }
-      },
-      creator: true,
-      tenant: true,
-      logs: true
-    },
-    orderBy: { date: 'desc' }
-  });
-  console.log('[Production API] Number of productions fetched:', results.length);
-  return results;
-};
 
 exports.getProductionById = async (id) => {
   return await prisma.productions.findUnique({

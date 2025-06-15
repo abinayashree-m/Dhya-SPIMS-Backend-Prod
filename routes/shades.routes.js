@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const controller = require('../controllers/shades.controller');
+const { verifyToken } = require('../middlewares/auth.middleware');
+
+// Apply auth middleware to all routes
+router.use(verifyToken);
 
 /**
  * @swagger

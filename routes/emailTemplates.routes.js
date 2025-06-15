@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const controller = require('../controllers/emailTemplates.controller');
+const { verifyToken } = require('../middlewares/auth.middleware');
+
+// Protect all routes with authentication
+router.use(verifyToken);
 
 router.get('/', controller.getAll);
 router.get('/:id', controller.getById);

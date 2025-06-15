@@ -36,6 +36,7 @@ model fibres {
   fibre_usage_logs    fibre_usage_logs[]
   category            fibre_categories?        @relation(fields: [category_id], references: [id])
   shade_fibres        shade_fibres[]
+  tenant_id           String
 }
 
 model blend_fibres {
@@ -376,18 +377,19 @@ model cottons {
 }
 
 model employees {
-  id         String       @id @default(uuid()) @db.Uuid
-  name       String
-  token_no   String       @unique
-  shift_rate Decimal      @db.Decimal(10, 2)
-  aadhar_no  String       @unique
-  bank_acc_1 String
-  bank_acc_2 String?
-  department String?
-  join_date  DateTime?
-  created_at DateTime     @default(now())
-  updated_at DateTime     @default(now()) @updatedAt
-  Attendance Attendance[]
+  id          String   @id @default(uuid())
+  name        String
+  token_no    String       @unique
+  shift_rate  Decimal      @db.Decimal(10, 2)
+  aadhar_no   String       @unique
+  bank_acc_1  String
+  bank_acc_2  String?
+  department  String?
+  join_date   DateTime?
+  created_at  DateTime     @default(now())
+  updated_at  DateTime     @default(now()) @updatedAt
+  Attendance  Attendance[]
+  tenant_id   String
 }
 
 model MailingList {

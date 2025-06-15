@@ -4,13 +4,14 @@ exports.getAllProductions = async (req, res) => {
   try {
     console.log('[Production API] User object:', req.user);
     const tenant_id = req.user?.tenantId;
+    const { order_id } = req.query;
     
     if (!tenant_id) {
       console.error('[Production API] Error: No tenant_id found in user object');
       return res.status(401).json({ error: 'Unauthorized: No tenant ID found' });
     }
 
-    const productions = await productionService.getAllProductions(tenant_id);
+    const productions = await productionService.getAllProductions(tenant_id, order_id);
     res.json(productions);
   } catch (err) {
     console.error('[Production API] Error fetching productions:', err);
