@@ -62,7 +62,12 @@ exports.verify = async (req, res) => {
     const result = await purchaseOrderService.verify(id, req.user);
     res.json(result);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    console.error('PO Verification Error:', err);
+    res.status(400).json({ 
+      error: err.message,
+      details: err.stack,
+      code: err.code || 'VERIFICATION_ERROR'
+    });
   }
 };
 

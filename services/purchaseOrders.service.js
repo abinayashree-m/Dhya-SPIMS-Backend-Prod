@@ -2,6 +2,7 @@ const { PrismaClient } = require('@prisma/client');
 const { v4: uuidv4 } = require('uuid');
 const axios = require('axios');
 const FormData = require('form-data');
+const { sendPOAuthorizationEmail } = require('../utils/email');
 
 const prisma = new PrismaClient();
 
@@ -239,70 +240,211 @@ exports.remove = async (id) => {
 
 // ✅ Mark PO as verified
 exports.verify = async (id, user) => {
+  try {
+    const existing = await prisma.purchase_orders.findFirst({
+      where: { id, tenant_id: user.tenantId },
+      include: { items: true }
+    });
+
+    if (!existing) {
+      throw new Error('Purchase Order not found or access denied.');
+    }
+
+    if (existing.status === 'verified') {
+      throw new Error('Purchase Order is already verified.');
+    }
+
+    if (!existing.buyer_name) {
+      throw new Error('Purchase Order is missing buyer information.');
+    }
+
+    // Create or find buyer
+    let buyer = await prisma.buyers.findFirst({
+      where: {
+        name: existing.buyer_name,
+        email: existing.buyer_email
+      }
+    });
+
+    if (!buyer) {
+      buyer = await prisma.buyers.create({
+        data: {
+          name: existing.buyer_name,
+          contact: existing.buyer_contact_phone,
+          email: existing.buyer_email,
+          address: existing.buyer_address
+        }
+      });
+    }
+
+    // Find or create a default shade
+    let shade = await prisma.shades.findFirst({
+      where: {
+        shade_code: existing.items[0]?.shade_no || 'DEFAULT',
+        tenant_id: user.tenantId
+      }
+    });
+
+    if (!shade) {
+      shade = await prisma.shades.create({
+        data: {
+          shade_code: existing.items[0]?.shade_no || 'DEFAULT',
+          shade_name: existing.items[0]?.shade_no || 'Default Shade',
+          tenant_id: user.tenantId
+        }
+      });
+    }
+
+    // Create a new sales order
+    const order = await prisma.orders.create({
+      data: {
+        order_number: `SO-${Date.now()}`,
+        buyer_id: buyer.id,
+        shade_id: shade.id,
+        delivery_date: existing.po_date || new Date(),
+        quantity_kg: existing.items.reduce((sum, item) => sum + Number(item.quantity), 0),
+        status: 'pending',
+        tenant_id: user.tenantId,
+        created_by: user.id,
+        count: existing.items[0]?.count || null,
+      },
+    });
+
+    // Update PO status and link to SO
+    const updatedPO = await prisma.purchase_orders.update({
+      where: { id },
+      data: {
+        status: 'verified',
+        linked_sales_order_id: order.id,
+      },
+      include: {
+        items: true,
+      },
+    });
+
+    // Send email if buyer has an email address
+    if (existing.buyer_email) {
+      try {
+        await sendPOAuthorizationEmail({
+          to: existing.buyer_email,
+          buyerName: existing.buyer_name,
+          poNumber: existing.po_number,
+          soNumber: order.order_number,
+          tenant_id: user.tenantId,
+          items: existing.items,
+          poDate: existing.po_date,
+          deliveryDate: order.delivery_date,
+        });
+      } catch (error) {
+        console.error('Failed to send PO authorization email:', error);
+        // Don't throw the error - we don't want to fail the PO verification if email fails
+      }
+    }
+
+    return updatedPO;
+  } catch (error) {
+    console.error('Error in verify function:', error);
+    throw error;
+  }
+};
+
+// ✅ Convert PO to Sales Order
+exports.convertToSalesOrder = async (id, user, data) => {
   const existing = await prisma.purchase_orders.findFirst({
     where: { id, tenant_id: user.tenantId },
+    include: { items: true }
   });
 
   if (!existing) {
     throw new Error('Purchase Order not found or access denied.');
   }
 
-  return await prisma.purchase_orders.update({
+  // 🔄 Find / create buyer
+  let buyer = existing.buyer_id
+    ? await prisma.buyers.findUnique({ where: { id: existing.buyer_id } })
+    : await prisma.buyers.findFirst({
+        where: {
+          name: existing.buyer_name,
+          email: existing.buyer_email,
+        },
+      });
+
+  if (!buyer) {
+    buyer = await prisma.buyers.create({
+      data: {
+        name: existing.buyer_name || 'Default Buyer',
+        contact: existing.buyer_contact_phone,
+        email: existing.buyer_email,
+        address: existing.buyer_address,
+      },
+    });
+  }
+
+  // 🔄 Find / create shade
+  let shade = data.shade_id
+    ? await prisma.shades.findUnique({ where: { id: data.shade_id } })
+    : await prisma.shades.findFirst({
+        where: {
+          shade_code: existing.items[0]?.shade_no || 'DEFAULT',
+          tenant_id: user.tenantId,
+        },
+      });
+
+  if (!shade) {
+    shade = await prisma.shades.create({
+      data: {
+        shade_code: existing.items[0]?.shade_no || 'DEFAULT',
+        shade_name: existing.items[0]?.shade_no || 'Default Shade',
+        tenant_id: user.tenantId,
+      },
+    });
+  }
+
+  // Create a new sales order
+  const order = await prisma.orders.create({
+    data: {
+      order_number: `SO-${Date.now()}`,
+      buyer_id: buyer.id,
+      shade_id: shade.id,
+      delivery_date: existing.po_date || new Date(),
+      quantity_kg: existing.items.reduce((sum, item) => sum + Number(item.quantity), 0),
+      status: 'pending',
+      tenant_id: user.tenantId,
+      created_by: user.id,
+      count: existing.items[0]?.count || null,
+    },
+  });
+
+  // Update PO status and link to SO
+  const updatedPO = await prisma.purchase_orders.update({
     where: { id },
     data: {
       status: 'verified',
+      linked_sales_order_id: order.id,
     },
-  });
-};
-
-// ✅ Convert PO → SO
-exports.convertToSalesOrder = async (poId, user, data) => {
-  const po = await prisma.purchase_orders.findFirst({
-    where: {
-      id: poId,
-      tenant_id: user.tenantId,
-      status: 'verified',
-    },
-    include: { items: true },
-  });
-
-  if (!po) throw new Error('Verified Purchase Order not found');
-
-  const shade = await prisma.shades.findFirst({
-    where: { id: data.shade_id }
-  });
-  
-  const buyer = await prisma.buyers.findFirst({
-    where: {
-      id: data.buyer_id
+    include: {
+      items: true,
     },
   });
 
-  if (!shade || !buyer) throw new Error('Missing required shade or buyer');
+  // Send email if buyer has an email address
+  if (existing.buyer_email) {
+    try {
+      await sendPOAuthorizationEmail({
+        to: existing.buyer_email,
+        buyerName: existing.buyer_name,
+        poNumber: existing.po_number,
+        soNumber: order.order_number,
+        tenant_id: user.tenantId,
+        items: existing.items,
+        poDate: existing.po_date,
+        deliveryDate: order.delivery_date,
+      });
+    } catch (error) {
+      console.error('Failed to send PO authorization email:', error);
+      // Don't throw the error - we don't want to fail the PO conversion if email fails
+    }
+  }
 
-  const totalQty = po.items.reduce((sum, item) => sum + parseFloat(item.quantity), 0);
-
-  const newSO = await prisma.orders.create({
-    data: {
-      id: uuidv4(),
-      order_number: `SO-${Math.floor(Math.random() * 1000000)}`,
-      buyer_id: buyer.id,
-      shade_id: shade.id,
-      delivery_date: new Date(data.delivery_date),
-      quantity_kg: data.quantity_kg,
-      status: 'in_progress',
-      tenant_id: user.tenantId,
-      created_by: user.id,
-    },
-  });
-
-  await prisma.purchase_orders.update({
-    where: { id: poId },
-    data: {
-      status: 'converted',
-      linked_sales_order_id: newSO.id,
-    },
-  });
-
-  return newSO;
+  return updatedPO;
 };

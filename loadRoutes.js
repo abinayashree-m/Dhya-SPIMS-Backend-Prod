@@ -33,8 +33,11 @@ const loadRoutes = (app, dir = path.join(__dirname, 'routes')) => {
         purchaseOrders: '/api/purchase-orders',
         mailingLists: '/api/mailing-lists',
         emailTemplates: '/email-templates',
-        potentialBuyers: '/potential-buyers'
+        potentialBuyers: '/potential-buyers',
+        attendance: '/attendance',
       }[routeName] || `/${routeName}`;
+
+
 
       // Only mount if router is a valid Express router
       if (router && typeof router === 'function') {

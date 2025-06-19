@@ -4,10 +4,9 @@ const dotenv = require('dotenv');
 const { PrismaClient } = require('@prisma/client');
 const helmet = require('helmet');
 const morgan = require('morgan');
-const swaggerUi = require('swagger-ui-express');
-const swaggerDocument = require('./swagger');
 const loadRoutes = require('./loadRoutes');
 const errorMiddleware = require('./middlewares/error.middleware');
+const setupSwagger = require('./swagger');
 
 dotenv.config();
 const app = express();
@@ -29,10 +28,6 @@ app.use(express.json({ limit: '10mb' }));
 app.options('*', cors()); // handle preflight requests
 app.use(morgan('dev'));
 
-// ✅ Swagger Docs
-const setupSwagger = require('./swagger');
-setupSwagger(app);
-
 // ✅ Health Check
 app.get('/', (req, res) => {
   res.send('SPIMS API is running ✅');
@@ -41,8 +36,8 @@ app.get('/', (req, res) => {
 // Load routes automatically
 loadRoutes(app);
 
-// Swagger documentation
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+// ✅ Swagger Docs (served at /docs via setupSwagger)
+setupSwagger(app);
 
 // Error handling
 app.use(errorMiddleware);
@@ -51,4 +46,6 @@ app.use(errorMiddleware);
 const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
+  console.log(`SPIMS SWAGGER API running at: http://localhost:5001/docs/`);
+
 });

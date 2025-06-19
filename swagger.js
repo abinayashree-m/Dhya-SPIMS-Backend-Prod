@@ -67,7 +67,11 @@ const options = {
 const swaggerSpec = swaggerJSDoc(options);
 
 const setupSwagger = (app) => {
-  app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+  app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    explorer: true,
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: "SPIMS API Documentation"
+  }));
 };
 
 module.exports = setupSwagger;

@@ -101,8 +101,73 @@ async function sendBulkMarketingEmail({
   }
 }
 
+/**
+ * ✅ Send PO authorization and SO conversion email to buyer
+ */
+async function sendPOAuthorizationEmail({
+  to,
+  buyerName,
+  poNumber,
+  soNumber,
+  tenant_id,
+  items,
+  poDate,
+  deliveryDate,
+}) {
+  const signature = await getEmailSignature(tenant_id);
+
+  // Format items into a table
+  const itemsTable = items.map(item => `
+    <tr>
+      <td>${item.yarn_description}</td>
+      <td>${item.color || 'N/A'}</td>
+      <td>${item.count || 'N/A'}</td>
+      <td>${item.quantity} ${item.uom}</td>
+      <td>${item.shade_no || 'N/A'}</td>
+    </tr>
+  `).join('');
+
+  const htmlContent = `
+    <p>Hello ${buyerName},</p>
+
+    <p>Your Purchase Order <strong>${poNumber}</strong> has been authorized and converted to Sales Order <strong>${soNumber}</strong>.</p>
+
+    <p>
+      <strong>PO Date:</strong> ${new Date(poDate).toLocaleDateString('en-GB')}<br/>
+      <strong>Expected Delivery Date:</strong> ${new Date(deliveryDate).toLocaleDateString('en-GB')}
+    </p>
+
+    <h3>Order Details:</h3>
+    <table style="border-collapse: collapse; width: 100%; margin: 20px 0;">
+      <thead>
+        <tr style="background-color: #f5f5f5;">
+          <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Description</th>
+          <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Color</th>
+          <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Count</th>
+          <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Quantity</th>
+          <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Shade No</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${itemsTable}
+      </tbody>
+    </table>
+
+    ${signature}
+  `;
+
+  await resend.emails.send({
+    from: 'NSC Spinning Mills <hosales@nscspgmills.com>',
+    to,
+    cc: ['dharsan@dhya.in', 'hosales@nscspgmills.com'],
+    subject: `PO Authorization & SO Conversion – ${poNumber}`,
+    html: htmlContent,
+  });
+}
+
 module.exports = {
   getEmailSignature,
   sendOrderConfirmationEmail,
   sendBulkMarketingEmail,
+  sendPOAuthorizationEmail,
 };

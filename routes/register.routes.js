@@ -1,3 +1,4 @@
+//pullable request
 const express = require('express');
 const router = express.Router();
 const controller = require('../controllers/register.controller');
@@ -6,7 +7,7 @@ const controller = require('../controllers/register.controller');
  * @swagger
  * /register:
  *   post:
- *     summary: Register a new tenant and admin user
+ *     summary: Register a new tenant and admin user (with optional roles)
  *     tags: [Register]
  *     requestBody:
  *       required: true
@@ -30,9 +31,24 @@ const controller = require('../controllers/register.controller');
  *                 type: string
  *               password:
  *                 type: string
+ *               roles:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     name:
+ *                       type: string
+ *                     description:
+ *                       type: string
+ *                     permissions:
+ *                       type: object
+ *                       additionalProperties:
+ *                         type: array
+ *                         items:
+ *                           type: string
  *     responses:
  *       201:
- *         description: Tenant and admin user created
+ *         description: Tenant, admin user, and roles created
  *       400:
  *         description: Missing required fields
  *       500:

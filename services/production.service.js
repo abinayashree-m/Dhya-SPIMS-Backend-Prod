@@ -42,7 +42,8 @@ const calculateTotal = (sections) => {
 const validateSectionData = (section, sectionName) => {
   if (!section) return false;
   if (sectionName === 'blow_room') {
-    return typeof section === 'object' && !Array.isArray(section);
+    // Accept either single object with total/remarks OR array of entries like other sections
+    return typeof section === 'object';
   }
   return Array.isArray(section);
 };
@@ -63,21 +64,23 @@ exports.getProductionByDate = async (date, tenant_id) => {
 };
 
 // Create or update production
-exports.createOrUpdateProduction = async (data, tenant_id) => {
+exports.createOrUpdateProduction = async (data, tenant_id, user_id) => {
   try {
     const { date, ...productionData } = data;
+    // Remove keys that are not part of Prisma model
+    const { selected_orders, ...cleanData } = productionData;
     const utcDate = toUTCDate(date);
 
     // Validate section data
     const sections = ['blow_room', 'carding', 'drawing', 'framing', 'simplex', 'spinning', 'autoconer'];
     sections.forEach(section => {
-      if (!validateSectionData(productionData[section], section)) {
+      if (!validateSectionData(cleanData[section], section)) {
         throw new Error(`Invalid data format for ${section}`);
       }
     });
 
     // Calculate total production
-    const total = calculateTotal(productionData);
+    const total = calculateTotal(cleanData);
 
     // Check if production exists for this date
     const existing = await prisma.productions.findFirst({
@@ -90,7 +93,8 @@ exports.createOrUpdateProduction = async (data, tenant_id) => {
     if (existing) {
       // Update existing production
       const updateData = {
-        ...productionData,
+        ...cleanData,
+        section: cleanData.section || 'master',
         total,
         updated_at: new Date()
       };
@@ -102,10 +106,12 @@ exports.createOrUpdateProduction = async (data, tenant_id) => {
     } else {
       // Create new production
       const createData = {
-        ...productionData,
+        ...cleanData,
+        section: cleanData.section || 'master',
         date: utcDate,
         total,
-        tenant_id
+        tenant_id,
+        created_by: user_id,
       };
 
       return await prisma.productions.create({
@@ -390,3 +396,12 @@ exports.getCumulativeProgressByOrder = async (order_id) => {
     }))
     };
   };
+
+// PUBLIC: Create production (wrapper for REST controller)
+exports.createProduction = async (data, user) => {
+  const tenant_id = user?.tenantId;
+  if (!tenant_id) {
+    throw new Error('Unauthorized: Missing tenant ID');
+  }
+  return exports.createOrUpdateProduction(data, tenant_id, user.id);
+};

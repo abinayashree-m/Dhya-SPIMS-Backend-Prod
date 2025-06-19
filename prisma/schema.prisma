@@ -62,6 +62,7 @@ model shades {
   id                      String                    @id @default(uuid()) @db.Uuid
   shade_code              String
   shade_name              String
+  tenant_id               String?                   @db.Uuid
   created_at              DateTime?                 @default(now()) @db.Timestamp(6)
   description             String?
   updated_at              DateTime?                 @default(now()) @db.Timestamp(6)
@@ -69,6 +70,9 @@ model shades {
   orders                  orders[]
   shade_fibres            shade_fibres[]
   raw_cotton_compositions raw_cotton_compositions[]
+  tenant                  tenants?                  @relation(fields: [tenant_id], references: [id])
+
+  @@index([tenant_id])
 }
 
 model shade_fibres {
@@ -96,6 +100,7 @@ model tenants {
   settings      settings?
   subscriptions subscriptions[]
   users         users[]
+  shades        shades[]
 }
 
 model subscriptions {
@@ -376,7 +381,7 @@ model cottons {
 }
 
 model employees {
-  id         String       @id @default(uuid())
+  id         String       @id @default(uuid()) @db.Uuid
   name       String
   token_no   String       @unique
   shift_rate Decimal      @db.Decimal(10, 2)
@@ -396,7 +401,7 @@ model MailingList {
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @default(now()) @updatedAt
   mailingListBuyers     MailingListBuyer[]
-  mailingListRecipients MailingListRecipient[] // ✅ Correct relation
+  mailingListRecipients MailingListRecipient[]
 }
 
 model MailingListBuyer {
@@ -429,16 +434,27 @@ model Campaign {
 }
 
 model Attendance {
-  id             String    @id @default(uuid())
-  date           DateTime
-  shift          String
-  overtime_hours Float
-  total_hours    Float
-  status         String
-  employee_id    String    @db.Uuid
-  employee       employees @relation(fields: [employee_id], references: [id])
+  id              String           @id @default(uuid())
+  date            DateTime
+  shift           String
+  overtime_hours  Float
+  total_hours     Float
+  status          AttendanceStatus
+  employee_id     String           @db.Uuid
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @default(now()) @updatedAt
+  in_time         DateTime
+  last_updated_by String?          @db.Uuid
+  out_time        DateTime
+  employee        employees        @relation(fields: [employee_id], references: [id])
 
   @@unique([date, employee_id])
+}
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  HALF_DAY
+  LEAVE
 }
 
 model PotentialBuyer {
@@ -457,7 +473,7 @@ model MailingListRecipient {
   name          String
   email         String
   company       String
-  source        String // 'buyer' | 'potential'
+  source        String
   createdAt     DateTime    @default(now())
   mailingList   MailingList @relation(fields: [mailingListId], references: [id], onDelete: Cascade)
 
@@ -496,19 +512,20 @@ model purchase_orders {
 }
 
 model purchase_order_items {
-  id                String   @id @default(uuid()) @db.Uuid
-  purchase_order_id String   @db.Uuid
+  id                String          @id @default(uuid()) @db.Uuid
+  purchase_order_id String          @db.Uuid
   order_code        String?
   yarn_description  String
   color             String?
   count             Int?
   uom               String?
   bag_count         Int?
-  quantity          Decimal  @db.Decimal(10, 2)
-  rate              Decimal  @db.Decimal(10, 2)
-  gst_percent       Decimal? @db.Decimal(4, 2)
-  taxable_amount    Decimal  @db.Decimal(12, 2)
+  quantity          Decimal         @db.Decimal(10, 2)
+  rate              Decimal         @db.Decimal(10, 2)
+  gst_percent       Decimal?        @db.Decimal(4, 2)
+  taxable_amount    Decimal         @db.Decimal(12, 2)
   shade_no          String?
-
-  purchase_order purchase_orders @relation(fields: [purchase_order_id], references: [id], onDelete: Cascade)
+  purchase_order    purchase_orders @relation(fields: [purchase_order_id], references: [id], onDelete: Cascade)
 }
+
+
