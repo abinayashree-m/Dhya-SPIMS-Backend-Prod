@@ -425,4 +425,39 @@ exports.getEmailAnalytics = async (req, res) => {
     console.error('❌ [ANALYTICS] Error stack:', error.stack);
     res.status(500).json({ error: 'Failed to fetch email analytics' });
   }
+};
+
+exports.resendWebhook = async (req, res) => {
+  try {
+    const event = req.body;
+    console.log('[Resend Webhook] Event received:', JSON.stringify(event, null, 2));
+
+    // Map Resend event to EmailEvent model
+    // Example Resend event: { id, type, data: { email, ... } }
+    const emailId = event.id || event.data?.id || null;
+    const recipient = event.data?.to || event.data?.recipient || null;
+    const eventType = event.type?.toUpperCase() || null;
+    const eventData = event.data || null;
+    const createdAt = event.created_at ? new Date(event.created_at) : new Date();
+
+    if (emailId && recipient && eventType) {
+      await prisma.emailEvent.create({
+        data: {
+          emailId,
+          recipient,
+          eventType,
+          eventData,
+          createdAt,
+        },
+      });
+      console.log('[Resend Webhook] Event stored:', emailId, recipient, eventType);
+    } else {
+      console.warn('[Resend Webhook] Missing required fields, not stored:', { emailId, recipient, eventType });
+    }
+
+    res.status(200).send('OK');
+  } catch (err) {
+    console.error('[Resend Webhook] Error handling event:', err);
+    res.status(500).send('Error');
+  }
 }; 

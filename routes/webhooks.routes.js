@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const controller = require('../controllers/webhooks.controller');
 const { verifyToken } = require('../middlewares/auth.middleware');
+const { resendWebhook } = require('../controllers/webhooks.controller');
 
 console.log('🔧 [ROUTES] Loading webhook routes...');
 
@@ -10,6 +11,9 @@ router.post('/resend', (req, res, next) => {
   console.log('🚀 [ROUTES] POST /webhooks/resend route hit');
   next();
 }, controller.handleResendWebhook);
+
+// Resend.com webhook endpoint
+router.post('/resend-webhook', express.json({ type: '*/*' }), resendWebhook);
 
 // Protected routes for analytics and management
 router.use(verifyToken);

@@ -71,4 +71,9 @@ const loadRoutes = (app, dir = path.join(__dirname, 'routes')) => {
   console.log('✅ [LOAD_ROUTES] Route loading process completed');
 };
 
-module.exports = loadRoutes;
+const webhooksRoutes = require('./routes/webhooks.routes');
+
+module.exports = (app) => {
+  loadRoutes(app);
+  app.use('/api', webhooksRoutes);
+};

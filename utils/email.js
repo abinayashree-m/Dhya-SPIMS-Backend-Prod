@@ -89,7 +89,7 @@ async function sendOrderConfirmationEmail({
 }
 
 /**
- * ✅ Send bulk marketing email to buyer mailing lists
+ * ✅ Send bulk marketing email to buyer mailing lists (original function)
  */
 async function sendBulkMarketingEmail({
   toEmails = [],
@@ -141,6 +141,103 @@ async function sendBulkMarketingEmail({
   }
 
   return { results, errors };
+}
+
+/**
+ * 🚀 Send bulk marketing email with batch processing for large campaigns
+ */
+async function sendBulkMarketingEmailBatched({
+  toEmails = [],
+  subject,
+  bodyHtml,
+  campaignId = null,
+  tenant_id = null,
+  batchSize = 100,
+  delayBetweenBatches = 1000, // 1 second delay
+}) {
+  if (!toEmails.length || !subject || !bodyHtml) {
+    throw new Error('Missing fields: toEmails, subject, or bodyHtml');
+  }
+
+  const fullHtml = `
+    ${bodyHtml}
+    <hr style="margin-top: 32px; opacity: 0.4;" />
+  `;
+
+  const results = [];
+  const errors = [];
+  const totalEmails = toEmails.length;
+  const totalBatches = Math.ceil(totalEmails / batchSize);
+
+  console.log(`📧 Starting batch email campaign: ${totalEmails} emails in ${totalBatches} batches`);
+
+  for (let i = 0; i < totalEmails; i += batchSize) {
+    const batch = toEmails.slice(i, i + batchSize);
+    const batchNumber = Math.floor(i / batchSize) + 1;
+    
+    console.log(`📧 Processing batch ${batchNumber}/${totalBatches} (${batch.length} emails)`);
+
+    // Process batch in parallel
+    const batchPromises = batch.map(async (to) => {
+      try {
+        const emailData = {
+          from: 'NSC Spinning Mills <hosales@nscspgmills.com>',
+          to,
+          subject,
+          html: fullHtml,
+          tags: [
+            { name: 'email_type', value: 'marketing' },
+            { name: 'campaign_id', value: campaignId || 'bulk' },
+            { name: 'tenant_id', value: tenant_id || 'unknown' },
+            { name: 'batch_number', value: batchNumber.toString() }
+          ]
+        };
+
+        const result = await resend.emails.send(emailData);
+        return { to, success: true, emailId: result.id, batchNumber };
+      } catch (error) {
+        console.error(`❌ Failed to send email to ${to}:`, error.message);
+        return { to, success: false, error: error.message, batchNumber };
+      }
+    });
+
+    // Wait for batch to complete
+    const batchResults = await Promise.allSettled(batchPromises);
+    
+    // Process batch results
+    batchResults.forEach((result) => {
+      if (result.status === 'fulfilled') {
+        const emailResult = result.value;
+        if (emailResult.success) {
+          results.push(emailResult);
+        } else {
+          errors.push(emailResult);
+        }
+      } else {
+        errors.push({ to: 'unknown', success: false, error: result.reason, batchNumber });
+      }
+    });
+
+    console.log(`✅ Batch ${batchNumber} completed: ${results.length} sent, ${errors.length} failed`);
+
+    // Add delay between batches (except for the last batch)
+    if (i + batchSize < totalEmails) {
+      console.log(`⏳ Waiting ${delayBetweenBatches}ms before next batch...`);
+      await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));
+    }
+  }
+
+  // Log final summary
+  console.log(`📧 Campaign completed: ${results.length} sent, ${errors.length} failed`);
+
+  return { results, errors, summary: {
+    totalEmails,
+    totalBatches,
+    batchSize,
+    sent: results.length,
+    failed: errors.length,
+    successRate: ((results.length / totalEmails) * 100).toFixed(2) + '%'
+  }};
 }
 
 /**
@@ -261,11 +358,64 @@ async function filterBouncedEmails(emails) {
   return { validEmails, bouncedEmails };
 }
 
+/**
+ * 🚀 Optimized bounce filtering for large email lists
+ */
+async function filterBouncedEmailsOptimized(emails, batchSize = 1000) {
+  const validEmails = [];
+  const bouncedEmails = [];
+  const totalEmails = emails.length;
+  const totalBatches = Math.ceil(totalEmails / batchSize);
+
+  console.log(`🔍 Optimized bounce filtering: ${totalEmails} emails in ${totalBatches} batches`);
+
+  for (let i = 0; i < totalEmails; i += batchSize) {
+    const batch = emails.slice(i, i + batchSize);
+    const batchNumber = Math.floor(i / batchSize) + 1;
+    
+    console.log(`🔍 Processing bounce filter batch ${batchNumber}/${totalBatches}`);
+
+    try {
+      // Batch query for bounced emails
+      const bouncedInBatch = await prisma.bouncedEmail.findMany({
+        where: {
+          email: {
+            in: batch.map(email => email.toLowerCase())
+          }
+        },
+        select: { email: true }
+      });
+
+      const bouncedEmailsSet = new Set(bouncedInBatch.map(b => b.email));
+
+      // Categorize emails in this batch
+      batch.forEach(email => {
+        if (bouncedEmailsSet.has(email.toLowerCase())) {
+          bouncedEmails.push(email);
+        } else {
+          validEmails.push(email);
+        }
+      });
+
+      console.log(`✅ Batch ${batchNumber} processed: ${batch.length - bouncedInBatch.length} valid, ${bouncedInBatch.length} bounced`);
+    } catch (error) {
+      console.error(`❌ Error processing bounce filter batch ${batchNumber}:`, error);
+      // If batch fails, treat all emails as valid
+      validEmails.push(...batch);
+    }
+  }
+
+  console.log(`✅ Bounce filtering complete: ${validEmails.length} valid, ${bouncedEmails.length} bounced`);
+  return { validEmails, bouncedEmails };
+}
+
 module.exports = {
   getEmailSignature,
   sendOrderConfirmationEmail,
   sendBulkMarketingEmail,
+  sendBulkMarketingEmailBatched,
   sendPOAuthorizationEmail,
   isEmailBounced,
   filterBouncedEmails,
+  filterBouncedEmailsOptimized,
 };
