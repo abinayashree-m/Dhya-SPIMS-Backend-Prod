@@ -3,6 +3,8 @@ const fs = require('fs');
 const path = require('path');
 
 const loadRoutes = (app, dir = path.join(__dirname, 'routes')) => {
+  console.log('🔧 [LOAD_ROUTES] Starting route loading process...');
+  
   fs.readdirSync(dir).forEach((file) => {
     const fullPath = path.join(dir, file);
 
@@ -13,6 +15,8 @@ const loadRoutes = (app, dir = path.join(__dirname, 'routes')) => {
 
     try {
       const routeName = file.replace('.routes.js', '').replace('.js', '');
+      console.log(`🔧 [LOAD_ROUTES] Processing route file: ${file} (routeName: ${routeName})`);
+      
       const router = require(fullPath);
 
       // Special case handling for route paths
@@ -35,21 +39,36 @@ const loadRoutes = (app, dir = path.join(__dirname, 'routes')) => {
         emailTemplates: '/email-templates',
         potentialBuyers: '/potential-buyers',
         attendance: '/attendance',
+        webhooks: '/api/webhooks',
       }[routeName] || `/${routeName}`;
 
-
+      console.log(`🔧 [LOAD_ROUTES] Route ${routeName} will be mounted at: ${mountPath}`);
 
       // Only mount if router is a valid Express router
       if (router && typeof router === 'function') {
-        console.log(`Mounting route: ${mountPath} from ${file}`);
+        console.log(`✅ [LOAD_ROUTES] Mounting route: ${mountPath} from ${file}`);
         app.use(mountPath, router);
+        
+        // Special logging for webhook routes
+        if (routeName === 'webhooks') {
+          console.log('🎯 [LOAD_ROUTES] Webhook routes successfully mounted at /api/webhooks');
+          console.log('🎯 [LOAD_ROUTES] Available webhook endpoints:');
+          console.log('   - POST /api/webhooks/resend');
+          console.log('   - GET /api/webhooks/events');
+          console.log('   - GET /api/webhooks/analytics');
+          console.log('   - GET /api/webhooks/bounces');
+          console.log('   - DELETE /api/webhooks/bounces/:email');
+        }
       } else {
-        console.warn(`Warning: Invalid router in ${file} - skipping`);
+        console.warn(`⚠️ [LOAD_ROUTES] Warning: Invalid router in ${file} - skipping`);
       }
     } catch (error) {
-      console.error(`Error loading route ${file}:`, error.message);
+      console.error(`❌ [LOAD_ROUTES] Error loading route ${file}:`, error.message);
+      console.error(`❌ [LOAD_ROUTES] Error stack:`, error.stack);
     }
   });
+  
+  console.log('✅ [LOAD_ROUTES] Route loading process completed');
 };
 
 module.exports = loadRoutes;

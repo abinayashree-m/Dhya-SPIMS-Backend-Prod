@@ -65,13 +65,27 @@ async function sendOrderConfirmationEmail({
     ${signature}
   `;
 
-  await resend.emails.send({
+  const emailData = {
     from: 'NSC Spinning Mills <hosales@nscspgmills.com>',
     to,
     cc: ['dharsan@dhya.in', 'hosales@nscspgmills.com'],
     subject: `Order Confirmation – ${orderNumber}`,
     html: htmlContent,
-  });
+    tags: [
+      { name: 'email_type', value: 'order_confirmation' },
+      { name: 'order_number', value: orderNumber },
+      { name: 'tenant_id', value: tenant_id }
+    ]
+  };
+
+  try {
+    const result = await resend.emails.send(emailData);
+    console.log(`✅ Order confirmation email sent: ${orderNumber} to ${to}`);
+    return result;
+  } catch (error) {
+    console.error(`❌ Failed to send order confirmation email: ${error.message}`);
+    throw error;
+  }
 }
 
 /**
@@ -81,6 +95,8 @@ async function sendBulkMarketingEmail({
   toEmails = [],
   subject,
   bodyHtml,
+  campaignId = null,
+  tenant_id = null,
 }) {
   if (!toEmails.length || !subject || !bodyHtml) {
     throw new Error('Missing fields: toEmails, subject, or bodyHtml');
@@ -91,14 +107,40 @@ async function sendBulkMarketingEmail({
     <hr style="margin-top: 32px; opacity: 0.4;" />
   `;
 
+  const results = [];
+  const errors = [];
+
   for (const to of toEmails) {
-    await resend.emails.send({
-      from: 'NSC Spinning Mills <hosales@nscspgmills.com>',
-      to,
-      subject,
-      html: fullHtml,
-    });
+    try {
+      const emailData = {
+        from: 'NSC Spinning Mills <hosales@nscspgmills.com>',
+        to,
+        subject,
+        html: fullHtml,
+        tags: [
+          { name: 'email_type', value: 'marketing' },
+          { name: 'campaign_id', value: campaignId || 'bulk' },
+          { name: 'tenant_id', value: tenant_id || 'unknown' }
+        ]
+      };
+
+      const result = await resend.emails.send(emailData);
+      results.push({ to, success: true, emailId: result.id });
+      console.log(`✅ Marketing email sent to: ${to}`);
+    } catch (error) {
+      console.error(`❌ Failed to send marketing email to ${to}:`, error.message);
+      errors.push({ to, success: false, error: error.message });
+    }
   }
+
+  // Log summary
+  console.log(`📧 Bulk email summary: ${results.length} sent, ${errors.length} failed`);
+
+  if (errors.length > 0) {
+    console.warn('⚠️ Some emails failed to send:', errors);
+  }
+
+  return { results, errors };
 }
 
 /**
@@ -156,13 +198,67 @@ async function sendPOAuthorizationEmail({
     ${signature}
   `;
 
-  await resend.emails.send({
+  const emailData = {
     from: 'NSC Spinning Mills <hosales@nscspgmills.com>',
     to,
     cc: ['dharsan@dhya.in', 'hosales@nscspgmills.com'],
     subject: `PO Authorization & SO Conversion – ${poNumber}`,
     html: htmlContent,
-  });
+    tags: [
+      { name: 'email_type', value: 'po_authorization' },
+      { name: 'po_number', value: poNumber },
+      { name: 'so_number', value: soNumber },
+      { name: 'tenant_id', value: tenant_id }
+    ]
+  };
+
+  try {
+    const result = await resend.emails.send(emailData);
+    console.log(`✅ PO authorization email sent: ${poNumber} to ${to}`);
+    return result;
+  } catch (error) {
+    console.error(`❌ Failed to send PO authorization email: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * 🔍 Check if email is in bounce list
+ */
+async function isEmailBounced(email) {
+  try {
+    const bouncedEmail = await prisma.bouncedEmail.findUnique({
+      where: { email: email.toLowerCase() }
+    });
+    return !!bouncedEmail;
+  } catch (error) {
+    console.error(`❌ Error checking bounce status for ${email}:`, error);
+    return false;
+  }
+}
+
+/**
+ * 🚫 Filter out bounced emails from recipient list
+ */
+async function filterBouncedEmails(emails) {
+  const validEmails = [];
+  const bouncedEmails = [];
+
+  for (const email of emails) {
+    const isBounced = await isEmailBounced(email);
+    if (isBounced) {
+      bouncedEmails.push(email);
+      console.log(`🚫 Skipping bounced email: ${email}`);
+    } else {
+      validEmails.push(email);
+    }
+  }
+
+  if (bouncedEmails.length > 0) {
+    console.log(`🚫 Filtered out ${bouncedEmails.length} bounced emails`);
+  }
+
+  return { validEmails, bouncedEmails };
 }
 
 module.exports = {
@@ -170,4 +266,6 @@ module.exports = {
   sendOrderConfirmationEmail,
   sendBulkMarketingEmail,
   sendPOAuthorizationEmail,
+  isEmailBounced,
+  filterBouncedEmails,
 };

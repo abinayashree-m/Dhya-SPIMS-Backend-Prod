@@ -424,13 +424,58 @@ model EmailTemplate {
 }
 
 model Campaign {
-  id         String   @id @default(uuid())
-  tenant_id  String
-  subject    String
-  bodyHtml   String
-  createdAt  DateTime @default(now())
-  name       String
-  recipients String[]
+  id          String       @id @default(uuid()) @db.Uuid
+  tenant_id   String
+  subject     String
+  bodyHtml    String
+  createdAt   DateTime     @default(now())
+  name        String
+  recipients  String[]
+  emailEvents EmailEvent[]
+}
+
+model EmailEvent {
+  id         String         @id @default(uuid()) @db.Uuid
+  emailId    String // Resend email ID
+  campaignId String?        @db.Uuid
+  recipient  String // Email address
+  eventType  EmailEventType
+  eventData  Json? // Additional event data (bounce details, click info, etc.)
+  createdAt  DateTime       @default(now())
+  campaign   Campaign?      @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  @@index([emailId])
+  @@index([recipient])
+  @@index([eventType])
+  @@index([campaignId])
+}
+
+enum EmailEventType {
+  SENT
+  DELIVERED
+  DELIVERY_DELAYED
+  COMPLAINED
+  BOUNCED
+  OPENED
+  CLICKED
+}
+
+model BouncedEmail {
+  id            String     @id @default(uuid()) @db.Uuid
+  email         String     @unique
+  bounceType    BounceType
+  bounceMessage String?
+  lastBounced   DateTime   @default(now())
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @default(now()) @updatedAt
+
+  @@index([email])
+}
+
+enum BounceType {
+  HARD
+  SOFT
+  SUPPRESSED
 }
 
 model Attendance {
@@ -450,6 +495,7 @@ model Attendance {
 
   @@unique([date, employee_id])
 }
+
 enum AttendanceStatus {
   PRESENT
   ABSENT
@@ -527,5 +573,3 @@ model purchase_order_items {
   shade_no          String?
   purchase_order    purchase_orders @relation(fields: [purchase_order_id], references: [id], onDelete: Cascade)
 }
-
-
