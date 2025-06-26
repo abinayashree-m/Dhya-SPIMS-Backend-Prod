@@ -676,6 +676,8 @@ exports.analyzeDirectEmails = async (req, res) => {
     const resendStartTime = Date.now();
     
     let resendEmails = [];
+    let resendApiError = null;
+    
     try {
       resendEmails = await fetchEmailsByDateRange(
         startDateObj.toISOString(),
@@ -686,8 +688,12 @@ exports.analyzeDirectEmails = async (req, res) => {
       console.log(`⏱️ [ANALYZE_DIRECT_EMAILS] Resend API fetch completed in ${resendEndTime - resendStartTime}ms`);
       console.log(`📊 [ANALYZE_DIRECT_EMAILS] Found ${resendEmails.length} emails from Resend API`);
     } catch (error) {
+      const resendEndTime = Date.now();
+      resendApiError = error.message;
       console.error('❌ [ANALYZE_DIRECT_EMAILS] Failed to fetch from Resend API:', error.message);
+      console.log('⚠️ [ANALYZE_DIRECT_EMAILS] Resend API returned 405 error - endpoint may not be available with current API key');
       console.log('⚠️ [ANALYZE_DIRECT_EMAILS] Falling back to local database analysis only');
+      console.log('💡 [ANALYZE_DIRECT_EMAILS] To enable Resend API analysis, check API key permissions or use webhooks for event tracking');
       resendEmails = [];
     }
 
@@ -831,6 +837,7 @@ exports.analyzeDirectEmails = async (req, res) => {
       bouncedEmails: Array.from(bouncedEmails),
       missedEmails: missedEmails,
       resendApiEmails: Array.from(resendEmailMap.values()),
+      resendApiError: resendApiError,
       summary: {
         sent: sentEmails.size,
         delivered: deliveredEmails.size,
@@ -842,6 +849,22 @@ exports.analyzeDirectEmails = async (req, res) => {
         localEventsFound: localEvents.length,
         deliveryRate: originalEmailList.length > 0 ? ((deliveredEmails.size / originalEmailList.length) * 100).toFixed(1) : '0',
         openRate: originalEmailList.length > 0 ? ((openedEmails.size / originalEmailList.length) * 100).toFixed(1) : '0',
+      },
+      recommendations: {
+        resendApiIssue: resendApiError ? {
+          error: resendApiError,
+          solution: "The Resend API endpoint /emails is returning 405 Method Not Allowed. This could be due to:",
+          possibleCauses: [
+            "API key doesn't have permission to read email history",
+            "The /emails endpoint is not available in your Resend plan",
+            "API key is restricted to sending emails only"
+          ],
+          alternatives: [
+            "Set up webhooks to track email events in real-time",
+            "Use campaign tracking for better email analytics",
+            "Contact Resend support to enable email history access"
+          ]
+        } : null
       }
     };
 
