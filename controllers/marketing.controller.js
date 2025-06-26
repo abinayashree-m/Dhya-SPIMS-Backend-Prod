@@ -1,5 +1,6 @@
 const { PrismaClient } = require('@prisma/client');
 const { sendBulkMarketingEmail, sendBulkMarketingEmailBatched, filterBouncedEmails, filterBouncedEmailsOptimized } = require('../utils/email');
+const { fetchEmailsByDateRange } = require('../services/resend.service');
 
 const prisma = new PrismaClient();
 
@@ -647,19 +648,53 @@ exports.analyzeDirectEmails = async (req, res) => {
       endDate 
     } = req.body;
 
+    console.log('🚀 [ANALYZE_DIRECT_EMAILS] Starting analysis...');
+    console.log(`📋 [ANALYZE_DIRECT_EMAILS] Request body:`, {
+      originalEmailListLength: originalEmailList?.length,
+      subject: subject?.substring(0, 50) + (subject?.length > 50 ? '...' : ''),
+      tenant_id,
+      startDate,
+      endDate
+    });
+
     if (!originalEmailList || !Array.isArray(originalEmailList)) {
+      console.log('❌ [ANALYZE_DIRECT_EMAILS] Invalid originalEmailList - must be an array');
       return res.status(400).json({ error: 'originalEmailList must be an array of email addresses' });
     }
 
-    console.log(`🔍 Analyzing direct emails: ${originalEmailList.length} original emails`);
+    console.log(`🔍 [ANALYZE_DIRECT_EMAILS] Analyzing direct emails: ${originalEmailList.length} original emails`);
 
     // Get date range for analysis (default to last 7 days)
     const endDateObj = endDate ? new Date(endDate) : new Date();
     const startDateObj = startDate ? new Date(startDate) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-    console.log(`📅 Analyzing events from ${startDateObj.toISOString()} to ${endDateObj.toISOString()}`);
+    console.log(`📅 [ANALYZE_DIRECT_EMAILS] Date range: ${startDateObj.toISOString()} to ${endDateObj.toISOString()}`);
+    console.log(`⏱️ [ANALYZE_DIRECT_EMAILS] Time span: ${Math.round((endDateObj - startDateObj) / (1000 * 60 * 60 * 24))} days`);
 
-    // Query local EmailEvent table for events in the date range
+    // ✅ STEP 1: Fetch emails from Resend API by date range
+    console.log('🔍 [ANALYZE_DIRECT_EMAILS] Fetching emails from Resend API...');
+    const resendStartTime = Date.now();
+    
+    let resendEmails = [];
+    try {
+      resendEmails = await fetchEmailsByDateRange(
+        startDateObj.toISOString(),
+        endDateObj.toISOString(),
+        100 // Limit to 100 emails for now
+      );
+      const resendEndTime = Date.now();
+      console.log(`⏱️ [ANALYZE_DIRECT_EMAILS] Resend API fetch completed in ${resendEndTime - resendStartTime}ms`);
+      console.log(`📊 [ANALYZE_DIRECT_EMAILS] Found ${resendEmails.length} emails from Resend API`);
+    } catch (error) {
+      console.error('❌ [ANALYZE_DIRECT_EMAILS] Failed to fetch from Resend API:', error.message);
+      console.log('⚠️ [ANALYZE_DIRECT_EMAILS] Falling back to local database analysis only');
+      resendEmails = [];
+    }
+
+    // ✅ STEP 2: Query local EmailEvent table for events in the date range
+    console.log('🔍 [ANALYZE_DIRECT_EMAILS] Querying local database for email events...');
+    const dbStartTime = Date.now();
+    
     const localEvents = await prisma.emailEvent.findMany({
       where: {
         recipient: { in: originalEmailList },
@@ -671,16 +706,58 @@ exports.analyzeDirectEmails = async (req, res) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    console.log(`📊 Found ${localEvents.length} local events for analysis`);
+    const dbEndTime = Date.now();
+    console.log(`⏱️ [ANALYZE_DIRECT_EMAILS] Database query completed in ${dbEndTime - dbStartTime}ms`);
+    console.log(`📊 [ANALYZE_DIRECT_EMAILS] Found ${localEvents.length} local events for analysis`);
 
-    // Process events to categorize emails
+    // ✅ STEP 3: Combine and process all events
+    console.log('🔄 [ANALYZE_DIRECT_EMAILS] Processing events to categorize emails...');
+    const processStartTime = Date.now();
+    
     const sentEmails = new Set();
     const deliveredEmails = new Set();
     const openedEmails = new Set();
     const clickedEmails = new Set();
     const bouncedEmails = new Set();
+    const resendEmailMap = new Map(); // Map email addresses to Resend email details
 
-    localEvents.forEach(event => {
+    // Process Resend API emails
+    resendEmails.forEach(email => {
+      const recipientEmail = email.to;
+      if (originalEmailList.includes(recipientEmail)) {
+        resendEmailMap.set(recipientEmail, email);
+        
+        // Categorize based on last_event
+        switch (email.last_event) {
+          case 'delivered':
+            deliveredEmails.add(recipientEmail);
+            sentEmails.add(recipientEmail); // If delivered, it was also sent
+            break;
+          case 'sent':
+            sentEmails.add(recipientEmail);
+            break;
+          case 'bounced':
+            bouncedEmails.add(recipientEmail);
+            break;
+          case 'opened':
+            openedEmails.add(recipientEmail);
+            deliveredEmails.add(recipientEmail);
+            sentEmails.add(recipientEmail);
+            break;
+          case 'clicked':
+            clickedEmails.add(recipientEmail);
+            openedEmails.add(recipientEmail);
+            deliveredEmails.add(recipientEmail);
+            sentEmails.add(recipientEmail);
+            break;
+          default:
+            console.log(`⚠️ [ANALYZE_DIRECT_EMAILS] Unknown Resend event type: ${email.last_event} for ${recipientEmail}`);
+        }
+      }
+    });
+
+    // Process local database events (these might have more detailed event history)
+    localEvents.forEach((event, index) => {
       const email = event.recipient;
       
       switch (event.eventType) {
@@ -699,13 +776,51 @@ exports.analyzeDirectEmails = async (req, res) => {
         case 'BOUNCED':
           bouncedEmails.add(email);
           break;
+        default:
+          console.log(`⚠️ [ANALYZE_DIRECT_EMAILS] Unknown local event type: ${event.eventType} for ${email}`);
       }
     });
 
+    const processEndTime = Date.now();
+    console.log(`⏱️ [ANALYZE_DIRECT_EMAILS] Event processing completed in ${processEndTime - processStartTime}ms`);
+
+    // Log categorization results
+    console.log('📊 [ANALYZE_DIRECT_EMAILS] Email categorization results:');
+    console.log(`   📧 Sent: ${sentEmails.size} emails`);
+    console.log(`   ✅ Delivered: ${deliveredEmails.size} emails`);
+    console.log(`   👁️ Opened: ${openedEmails.size} emails`);
+    console.log(`   🔗 Clicked: ${clickedEmails.size} emails`);
+    console.log(`   ❌ Bounced: ${bouncedEmails.size} emails`);
+    console.log(`   📡 Resend API emails found: ${resendEmailMap.size}`);
+    console.log(`   🗄️ Local DB events found: ${localEvents.length}`);
+
     // Calculate missed emails (emails that were never sent or delivered)
+    console.log('🔍 [ANALYZE_DIRECT_EMAILS] Calculating missed emails...');
     const missedEmails = originalEmailList.filter(email => 
       !sentEmails.has(email) && !deliveredEmails.has(email)
     );
+
+    console.log(`📧 [ANALYZE_DIRECT_EMAILS] Missed emails calculation: ${missedEmails.length} out of ${originalEmailList.length} total`);
+
+    // Log some sample missed emails for debugging
+    if (missedEmails.length > 0) {
+      console.log('📋 [ANALYZE_DIRECT_EMAILS] Sample missed emails:');
+      missedEmails.slice(0, 5).forEach((email, index) => {
+        console.log(`   ${index + 1}. ${email}`);
+      });
+      if (missedEmails.length > 5) {
+        console.log(`   ... and ${missedEmails.length - 5} more missed emails`);
+      }
+    }
+
+    // Log some sample found emails for debugging
+    if (sentEmails.size > 0) {
+      console.log('📋 [ANALYZE_DIRECT_EMAILS] Sample found emails:');
+      Array.from(sentEmails).slice(0, 3).forEach((email, index) => {
+        const resendEmail = resendEmailMap.get(email);
+        console.log(`   ${index + 1}. ${email} - Resend ID: ${resendEmail?.id || 'N/A'}, Last Event: ${resendEmail?.last_event || 'N/A'}`);
+      });
+    }
 
     const result = {
       totalOriginalEmails: originalEmailList.length,
@@ -715,6 +830,7 @@ exports.analyzeDirectEmails = async (req, res) => {
       clickedEmails: Array.from(clickedEmails),
       bouncedEmails: Array.from(bouncedEmails),
       missedEmails: missedEmails,
+      resendApiEmails: Array.from(resendEmailMap.values()),
       summary: {
         sent: sentEmails.size,
         delivered: deliveredEmails.size,
@@ -722,16 +838,32 @@ exports.analyzeDirectEmails = async (req, res) => {
         clicked: clickedEmails.size,
         bounced: bouncedEmails.size,
         missed: missedEmails.length,
+        resendApiEmailsFound: resendEmailMap.size,
+        localEventsFound: localEvents.length,
         deliveryRate: originalEmailList.length > 0 ? ((deliveredEmails.size / originalEmailList.length) * 100).toFixed(1) : '0',
         openRate: originalEmailList.length > 0 ? ((openedEmails.size / originalEmailList.length) * 100).toFixed(1) : '0',
       }
     };
 
-    console.log(`✅ Analysis complete: ${result.summary.missed} missed emails out of ${originalEmailList.length} total`);
+    console.log('📊 [ANALYZE_DIRECT_EMAILS] Final summary:');
+    console.log(`   📧 Total original emails: ${result.totalOriginalEmails}`);
+    console.log(`   📤 Sent: ${result.summary.sent}`);
+    console.log(`   ✅ Delivered: ${result.summary.delivered}`);
+    console.log(`   👁️ Opened: ${result.summary.opened}`);
+    console.log(`   🔗 Clicked: ${result.summary.clicked}`);
+    console.log(`   ❌ Bounced: ${result.summary.bounced}`);
+    console.log(`   ❓ Missed: ${result.summary.missed}`);
+    console.log(`   📡 Resend API emails: ${result.summary.resendApiEmailsFound}`);
+    console.log(`   🗄️ Local events: ${result.summary.localEventsFound}`);
+    console.log(`   📈 Delivery rate: ${result.summary.deliveryRate}%`);
+    console.log(`   📈 Open rate: ${result.summary.openRate}%`);
+
+    console.log(`✅ [ANALYZE_DIRECT_EMAILS] Analysis complete: ${result.summary.missed} missed emails out of ${originalEmailList.length} total`);
 
     res.json(result);
   } catch (error) {
-    console.error('❌ Error analyzing direct emails:', error);
+    console.error('❌ [ANALYZE_DIRECT_EMAILS] Error analyzing direct emails:', error);
+    console.error('❌ [ANALYZE_DIRECT_EMAILS] Error stack:', error.stack);
     res.status(500).json({ error: 'Failed to analyze direct emails', details: error.message });
   }
 };
@@ -873,44 +1005,74 @@ exports.resendDirectMissed = async (req, res) => {
  * Fetch detailed status of specific emails by their Resend IDs
  */
 exports.fetchEmailDetails = async (req, res) => {
+  const startTime = Date.now();
+  console.log(`[Marketing] 🚀 fetchEmailDetails called at ${new Date().toISOString()}`);
+  
   try {
     const { emailIds, delayMs = 1000 } = req.body;
 
+    console.log(`[Marketing] 📥 Request body:`, JSON.stringify(req.body, null, 2));
+
     if (!emailIds || !Array.isArray(emailIds) || emailIds.length === 0) {
+      console.error(`[Marketing] ❌ Invalid request: emailIds must be a non-empty array`);
       return res.status(400).json({ error: 'emailIds must be a non-empty array of email IDs' });
     }
 
-    console.log(`🔍 Fetching details for ${emailIds.length} emails from Resend.com`);
+    console.log(`[Marketing] 🔍 Fetching details for ${emailIds.length} emails from Resend.com`);
+    console.log(`[Marketing] ⏱️ Delay setting: ${delayMs}ms`);
+    console.log(`[Marketing] 📋 Email IDs:`, emailIds);
 
     // Fetch email details with rate limiting
+    console.log(`[Marketing] 📡 Calling fetchEmailsByIds...`);
     const { results, errors } = await fetchEmailsByIds(emailIds, delayMs);
 
+    console.log(`[Marketing] 📊 fetchEmailsByIds completed:`);
+    console.log(`   - Results count: ${results.length}`);
+    console.log(`   - Errors count: ${errors.length}`);
+
     // Process results to extract relevant information
-    const emailDetails = results.map(email => ({
-      id: email.id,
-      to: email.to,
-      from: email.from,
-      subject: email.subject,
-      createdAt: email.created_at,
-      lastEvent: email.last_event,
-      status: email.last_event || 'unknown'
-    }));
+    console.log(`[Marketing] 🔧 Processing email results...`);
+    const emailDetails = results.map(email => {
+      const processed = {
+        id: email.id,
+        to: email.to,
+        from: email.from,
+        subject: email.subject,
+        createdAt: email.created_at,
+        lastEvent: email.last_event,
+        status: email.last_event || 'unknown'
+      };
+      console.log(`[Marketing] 📧 Processed email: ${email.id} -> ${processed.status}`);
+      return processed;
+    });
 
-    console.log(`✅ Successfully fetched ${results.length} emails, ${errors.length} failed`);
+    const totalDuration = Date.now() - startTime;
+    console.log(`[Marketing] ✅ Successfully fetched ${results.length} emails, ${errors.length} failed`);
+    console.log(`[Marketing] ⏱️ Total processing time: ${totalDuration}ms`);
 
-    res.status(200).json({
+    const response = {
       message: 'Email details fetched successfully',
       summary: {
         requested: emailIds.length,
         successful: results.length,
-        failed: errors.length
+        failed: errors.length,
+        processingTimeMs: totalDuration
       },
       emails: emailDetails,
       errors: errors
-    });
+    };
+
+    console.log(`[Marketing] 📤 Sending response:`, JSON.stringify(response.summary, null, 2));
+    res.status(200).json(response);
 
   } catch (err) {
-    console.error('❌ fetchEmailDetails error:', err);
-    res.status(500).json({ error: 'Failed to fetch email details', details: err.message });
+    const totalDuration = Date.now() - startTime;
+    console.error(`[Marketing] ❌ fetchEmailDetails error (${totalDuration}ms):`, err);
+    console.error(`[Marketing] 🚨 Error stack:`, err.stack);
+    res.status(500).json({ 
+      error: 'Failed to fetch email details', 
+      details: err.message,
+      processingTimeMs: totalDuration
+    });
   }
 };
