@@ -132,13 +132,12 @@ async function fetchEmailsByIds(emailIds, delayMs = 1000) {
 async function fetchEmailsByDateRange(startDate, endDate, limit = 100) {
   const startTime = Date.now();
   console.log(`[Resend] 🔍 Fetching emails by date range: ${startDate} to ${endDate}`);
-  console.log(`[Resend] 📡 Request URL: GET /emails?from=${startDate}&to=${endDate}&limit=${limit}`);
+  console.log(`[Resend] 📡 Request URL: GET /emails`);
   
   try {
+    // Try to fetch all emails first (Resend API might not support date filtering directly)
     const response = await resendApi.get('/emails', {
       params: {
-        from: startDate,
-        to: endDate,
         limit: limit
       }
     });
@@ -146,20 +145,33 @@ async function fetchEmailsByDateRange(startDate, endDate, limit = 100) {
     
     console.log(`[Resend] ✅ Emails fetch successful (${duration}ms)`);
     console.log(`[Resend] 📊 Response status: ${response.status}`);
-    console.log(`[Resend] 📄 Found ${response.data?.data?.length || 0} emails in date range`);
+    console.log(`[Resend] 📄 Found ${response.data?.data?.length || 0} total emails`);
+    
+    // Filter emails by date range on our side
+    let filteredEmails = [];
+    if (response.data?.data) {
+      filteredEmails = response.data.data.filter(email => {
+        const emailDate = new Date(email.created_at);
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        return emailDate >= start && emailDate <= end;
+      });
+    }
+    
+    console.log(`[Resend] 📊 Filtered to ${filteredEmails.length} emails in date range`);
     
     // Log sample emails for debugging
-    if (response.data?.data && response.data.data.length > 0) {
+    if (filteredEmails.length > 0) {
       console.log(`[Resend] 📋 Sample emails:`);
-      response.data.data.slice(0, 3).forEach((email, index) => {
+      filteredEmails.slice(0, 3).forEach((email, index) => {
         console.log(`   ${index + 1}. ID: ${email.id}, To: ${email.to}, Subject: ${email.subject?.substring(0, 50)}..., Created: ${email.created_at}, Last Event: ${email.last_event}`);
       });
-      if (response.data.data.length > 3) {
-        console.log(`   ... and ${response.data.data.length - 3} more emails`);
+      if (filteredEmails.length > 3) {
+        console.log(`   ... and ${filteredEmails.length - 3} more emails`);
       }
     }
     
-    return response.data?.data || [];
+    return filteredEmails;
   } catch (err) {
     const duration = Date.now() - startTime;
     console.error(`[Resend] ❌ Emails fetch failed (${duration}ms):`, err.message);
