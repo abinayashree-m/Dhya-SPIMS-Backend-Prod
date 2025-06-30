@@ -547,13 +547,16 @@ model purchase_order_items {
 }
 
 model CompanyPersona {
-  id        String   @id @default(uuid()) @db.Uuid
-  tenant_id String   @unique @db.Uuid
-  persona   String
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  tenant    tenants  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  id                    String   @id @default(uuid()) @db.Uuid
+  tenant_id             String   @unique @db.Uuid
+  executiveSummary      String   @db.Text
+  targetMarketSweetSpot String   @db.Text
+  swotAnalysis          Json
+  detailedAnalysis      Json
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  tenant                tenants  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
 }
 
 model GrowthCampaign {

@@ -47,7 +47,12 @@ exports.getCompanyPersona = async (req, res) => {
       isActive: persona.isActive,
       createdAt: persona.createdAt,
       updatedAt: persona.updatedAt,
-      personaLength: persona.persona?.length || 0
+      executiveSummaryLength: persona.executiveSummary?.length || 0,
+      targetMarketSweetSpotLength: persona.targetMarketSweetSpot?.length || 0,
+      hasSwotAnalysis: !!persona.swotAnalysis,
+      hasDetailedAnalysis: !!persona.detailedAnalysis,
+      swotAnalysisKeys: persona.swotAnalysis ? Object.keys(persona.swotAnalysis) : [],
+      detailedAnalysisKeys: persona.detailedAnalysis ? Object.keys(persona.detailedAnalysis) : []
     });
     console.log('✅ [GROWTH] === GET COMPANY PERSONA SUCCESS ===');
     res.status(200).json(persona);
@@ -226,11 +231,15 @@ exports.triggerPersonaGeneration = async (req, res) => {
 exports.upsertCompanyPersona = async (req, res) => {
   console.log('💾 [GROWTH] === UPSERT COMPANY PERSONA REQUEST ===');
   console.log(`💾 [GROWTH] Request body:`, {
-    hasPersona: !!req.body.persona,
-    hasPersonaContent: !!req.body.personaContent,
+    hasExecutiveSummary: !!req.body.executiveSummary,
+    hasTargetMarketSweetSpot: !!req.body.targetMarketSweetSpot,
+    hasSwotAnalysis: !!req.body.swotAnalysis,
+    hasDetailedAnalysis: !!req.body.detailedAnalysis,
     hasTenantId: !!req.body.tenantId,
-    personaLength: req.body.persona?.length || req.body.personaContent?.length || 0,
-    personaPreview: (req.body.persona || req.body.personaContent)?.substring(0, 100) + '...' || 'None'
+    executiveSummaryLength: req.body.executiveSummary?.length || 0,
+    targetMarketSweetSpotLength: req.body.targetMarketSweetSpot?.length || 0,
+    swotAnalysisType: typeof req.body.swotAnalysis,
+    detailedAnalysisType: typeof req.body.detailedAnalysis
   });
   console.log(`💾 [GROWTH] Request headers:`, {
     'user-agent': req.headers['user-agent'],
@@ -286,53 +295,102 @@ exports.upsertCompanyPersona = async (req, res) => {
       });
     }
 
-    // Get persona content from request body
-    const { persona, personaContent } = req.body;
-    const personaData = persona || personaContent; // Support both field names
-    console.log(`💾 [GROWTH] Persona data extraction:`, {
-      hasPersona: !!persona,
-      hasPersonaContent: !!personaContent,
-      finalPersonaData: !!personaData,
-      personaDataLength: personaData?.length || 0
+    // Extract structured persona data from request body
+    const { 
+      executiveSummary, 
+      targetMarketSweetSpot, 
+      swotAnalysis, 
+      detailedAnalysis 
+    } = req.body;
+    
+    console.log(`💾 [GROWTH] Structured persona data extraction:`, {
+      hasExecutiveSummary: !!executiveSummary,
+      hasTargetMarketSweetSpot: !!targetMarketSweetSpot,
+      hasSwotAnalysis: !!swotAnalysis,
+      hasDetailedAnalysis: !!detailedAnalysis,
+      executiveSummaryLength: executiveSummary?.length || 0,
+      targetMarketSweetSpotLength: targetMarketSweetSpot?.length || 0,
+      swotAnalysisType: typeof swotAnalysis,
+      detailedAnalysisType: typeof detailedAnalysis
     });
 
-    if (!personaData || typeof personaData !== 'string') {
-      console.log('❌ [GROWTH] Invalid persona data:', {
-        personaData: personaData,
-        type: typeof personaData
+    // Validate required fields
+    if (!executiveSummary || typeof executiveSummary !== 'string') {
+      console.log('❌ [GROWTH] Invalid executiveSummary:', {
+        executiveSummary: executiveSummary,
+        type: typeof executiveSummary
       });
       return res.status(400).json({ 
-        error: 'Persona content is required and must be a string. Use "persona" or "personaContent" field.' 
+        error: 'executiveSummary is required and must be a string' 
       });
     }
 
-    console.log(`💾 [GROWTH] Upserting persona for tenant: ${tenantId}`);
+    if (!targetMarketSweetSpot || typeof targetMarketSweetSpot !== 'string') {
+      console.log('❌ [GROWTH] Invalid targetMarketSweetSpot:', {
+        targetMarketSweetSpot: targetMarketSweetSpot,
+        type: typeof targetMarketSweetSpot
+      });
+      return res.status(400).json({ 
+        error: 'targetMarketSweetSpot is required and must be a string' 
+      });
+    }
+
+    if (!swotAnalysis || typeof swotAnalysis !== 'object') {
+      console.log('❌ [GROWTH] Invalid swotAnalysis:', {
+        swotAnalysis: swotAnalysis,
+        type: typeof swotAnalysis
+      });
+      return res.status(400).json({ 
+        error: 'swotAnalysis is required and must be an object' 
+      });
+    }
+
+    if (!detailedAnalysis || typeof detailedAnalysis !== 'object') {
+      console.log('❌ [GROWTH] Invalid detailedAnalysis:', {
+        detailedAnalysis: detailedAnalysis,
+        type: typeof detailedAnalysis
+      });
+      return res.status(400).json({ 
+        error: 'detailedAnalysis is required and must be an object' 
+      });
+    }
+
+    console.log(`💾 [GROWTH] Upserting structured persona for tenant: ${tenantId}`);
 
     const updatedPersona = await prisma.companyPersona.upsert({
       where: { tenant_id: tenantId },
       update: { 
-        persona: personaData,
+        executiveSummary: executiveSummary,
+        targetMarketSweetSpot: targetMarketSweetSpot,
+        swotAnalysis: swotAnalysis,
+        detailedAnalysis: detailedAnalysis,
         updatedAt: new Date()
       },
       create: {
         tenant_id: tenantId,
-        persona: personaData,
+        executiveSummary: executiveSummary,
+        targetMarketSweetSpot: targetMarketSweetSpot,
+        swotAnalysis: swotAnalysis,
+        detailedAnalysis: detailedAnalysis,
         isActive: true
       },
     });
 
-    console.log(`✅ [GROWTH] Persona saved successfully:`, {
+    console.log(`✅ [GROWTH] Structured persona saved successfully:`, {
       id: updatedPersona.id,
       tenantId: updatedPersona.tenant_id,
       isActive: updatedPersona.isActive,
       createdAt: updatedPersona.createdAt,
       updatedAt: updatedPersona.updatedAt,
-      personaLength: updatedPersona.persona.length
+      executiveSummaryLength: updatedPersona.executiveSummary?.length || 0,
+      targetMarketSweetSpotLength: updatedPersona.targetMarketSweetSpot?.length || 0,
+      hasSwotAnalysis: !!updatedPersona.swotAnalysis,
+      hasDetailedAnalysis: !!updatedPersona.detailedAnalysis
     });
     
     // Send success response back to n8n or frontend
     const responseData = {
-      message: 'Persona saved successfully.',
+      message: 'Structured persona saved successfully.',
       persona: updatedPersona,
     };
     
