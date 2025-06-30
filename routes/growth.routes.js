@@ -10,6 +10,25 @@ const { verifyToken, flexibleAuthMiddleware } = require('../middlewares/auth.mid
  *   description: Texintelli Growth Engine API endpoints
  */
 
+// Logging middleware for growth routes
+router.use((req, res, next) => {
+  console.log(`🌐 [GROWTH_ROUTES] ${req.method} ${req.path} - ${new Date().toISOString()}`);
+  console.log(`🌐 [GROWTH_ROUTES] Request details:`, {
+    method: req.method,
+    path: req.path,
+    query: req.query,
+    hasBody: !!req.body,
+    bodyKeys: req.body ? Object.keys(req.body) : [],
+    headers: {
+      'user-agent': req.headers['user-agent'],
+      'content-type': req.headers['content-type'],
+      'authorization': req.headers.authorization ? 'Bearer [HIDDEN]' : 'None',
+      'x-api-key': req.headers['x-api-key'] ? 'API_KEY [HIDDEN]' : 'None'
+    }
+  });
+  next();
+});
+
 /**
  * @swagger
  * /growth/persona:

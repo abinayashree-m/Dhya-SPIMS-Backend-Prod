@@ -85,6 +85,7 @@ exports.triggerPersonaGeneration = async (req, res) => {
     console.log(`🚀 [GROWTH] User authentication:`, {
       hasUser: !!req.user,
       tenantId: tenantId,
+      tenantIdType: typeof tenantId,
       userId: req.user?.id || 'None'
     });
     
@@ -92,6 +93,26 @@ exports.triggerPersonaGeneration = async (req, res) => {
       console.log('❌ [GROWTH] Missing tenant ID in token');
       return res.status(400).json({ error: 'Missing tenant ID in token' });
     }
+
+    // === ADD UUID VALIDATION ===
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const isValidUuid = uuidRegex.test(tenantId);
+    
+    console.log(`🚀 [GROWTH] Tenant ID validation:`, {
+      tenantId: tenantId,
+      isValidUuid: isValidUuid,
+      length: tenantId?.length,
+      type: typeof tenantId
+    });
+
+    if (!isValidUuid) {
+      console.error('❌ [GROWTH] Invalid UUID format for tenantId from token:', tenantId);
+      return res.status(400).json({ 
+        error: 'Invalid authentication token: tenantId is not a valid UUID format.',
+        details: `Expected UUID format like: 123e4567-e89b-12d3-a456-426614174000, got: ${tenantId}`
+      });
+    }
+    // === END UUID VALIDATION ===
 
     const { personaData } = req.body;
     console.log(`🚀 [GROWTH] Validating persona data:`, {
@@ -129,7 +150,8 @@ exports.triggerPersonaGeneration = async (req, res) => {
       payload: {
         hasPersonaData: !!personaData,
         personaDataLength: personaData.length,
-        tenantId: tenantId
+        tenantId: tenantId,
+        tenantIdValid: isValidUuid
       }
     });
     
