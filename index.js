@@ -18,6 +18,7 @@ app.use(
   cors({
     origin: [
       'http://localhost:5173', 
+      'http://localhost:5174',
       'https://dhya-spims-frontend-prod.vercel.app',
       'https://www.covai.ai',
       'https://covai.ai/',

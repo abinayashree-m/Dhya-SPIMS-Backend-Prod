@@ -40,6 +40,7 @@ const loadRoutes = (app, dir = path.join(__dirname, 'routes')) => {
         potentialBuyers: '/potential-buyers',
         attendance: '/attendance',
         webhooks: '/api/webhooks',
+        growth: '/api/growth',
       }[routeName] || `/${routeName}`;
 
       console.log(`🔧 [LOAD_ROUTES] Route ${routeName} will be mounted at: ${mountPath}`);
@@ -58,6 +59,19 @@ const loadRoutes = (app, dir = path.join(__dirname, 'routes')) => {
           console.log('   - GET /api/webhooks/analytics');
           console.log('   - GET /api/webhooks/bounces');
           console.log('   - DELETE /api/webhooks/bounces/:email');
+        }
+        
+        // Special logging for growth routes
+        if (routeName === 'growth') {
+          console.log('🚀 [LOAD_ROUTES] Growth Engine routes successfully mounted at /api/growth');
+          console.log('🚀 [LOAD_ROUTES] Available growth endpoints:');
+          console.log('   - GET /api/growth/persona');
+          console.log('   - POST /api/growth/persona');
+          console.log('   - GET /api/growth/campaigns');
+          console.log('   - POST /api/growth/campaigns');
+          console.log('   - PUT /api/growth/campaigns/:id/status');
+          console.log('   - GET /api/growth/campaigns/:id/brands');
+          console.log('   - PUT /api/growth/brands/:id/status');
         }
       } else {
         console.warn(`⚠️ [LOAD_ROUTES] Warning: Invalid router in ${file} - skipping`);

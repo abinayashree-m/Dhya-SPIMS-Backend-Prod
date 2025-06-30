@@ -29,8 +29,8 @@ const {
   exports.updateMailingList = async (req, res) => {
     try {
       const { id } = req.params;
-      const { name, buyerIds } = req.body;
-      const updated = await updateMailingListService(id, name, buyerIds);
+      const { name, buyerIds = [], recipients = [] } = req.body;
+      const updated = await updateMailingListService(id, name, buyerIds, recipients);
       res.json(updated);
     } catch (err) {
       console.error('❌ Error updating mailing list:', err);

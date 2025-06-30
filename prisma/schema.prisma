@@ -62,14 +62,14 @@ model shades {
   id                      String                    @id @default(uuid()) @db.Uuid
   shade_code              String
   shade_name              String
-  tenant_id               String?                   @db.Uuid
   created_at              DateTime?                 @default(now()) @db.Timestamp(6)
   description             String?
   updated_at              DateTime?                 @default(now()) @db.Timestamp(6)
   percentage              String?
+  tenant_id               String?                   @db.Uuid
   orders                  orders[]
-  shade_fibres            shade_fibres[]
   raw_cotton_compositions raw_cotton_compositions[]
+  shade_fibres            shade_fibres[]
   tenant                  tenants?                  @relation(fields: [tenant_id], references: [id])
 
   @@index([tenant_id])
@@ -87,20 +87,22 @@ model shade_fibres {
 }
 
 model tenants {
-  id            String          @id @default(uuid()) @db.Uuid
-  name          String
-  domain        String?
-  plan          String?         @default("free")
-  is_active     Boolean?        @default(true)
-  created_at    DateTime?       @default(now()) @db.Timestamp(6)
-  updated_at    DateTime?       @default(now()) @db.Timestamp(6)
-  orders        orders[]
-  productions   productions[]
-  roles         roles[]
-  settings      settings?
-  subscriptions subscriptions[]
-  users         users[]
-  shades        shades[]
+  id             String           @id @default(uuid()) @db.Uuid
+  name           String
+  domain         String?
+  plan           String?          @default("free")
+  is_active      Boolean?         @default(true)
+  created_at     DateTime?        @default(now()) @db.Timestamp(6)
+  updated_at     DateTime?        @default(now()) @db.Timestamp(6)
+  CompanyPersona CompanyPersona[]
+  GrowthCampaign GrowthCampaign[]
+  orders         orders[]
+  productions    productions[]
+  roles          roles[]
+  settings       settings?
+  shades         shades[]
+  subscriptions  subscriptions[]
+  users          users[]
 }
 
 model subscriptions {
@@ -243,32 +245,27 @@ model orders {
 }
 
 model productions {
-  id         String   @id @default(uuid()) @db.Uuid
+  id         String            @id @default(uuid()) @db.Uuid
   date       DateTime
-  tenant_id  String   @db.Uuid
-  created_by String   @db.Uuid
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-  section    String // Added section field
-
-  // Section-wise data
-  blow_room Json // { total: number, remarks: string }
-  carding   Json[] // Array of { machine: string, shift: string, production_kg: number, required_qty: number, remarks: string }
-  drawing   Json[] // Same structure as carding
-  framing   Json[] // Same structure as carding
-  simplex   Json[] // Same structure as carding
-  spinning  Json[] // Same structure as carding
-  autoconer Json[] // Same structure as carding
-
-  total   Decimal @default(0)
-  remarks String?
-
-  // Relations
-  tenant   tenants           @relation(fields: [tenant_id], references: [id])
-  creator  users             @relation(fields: [created_by], references: [id])
-  order    orders?           @relation(fields: [order_id], references: [id])
-  order_id String?           @db.Uuid
-  logs     production_logs[]
+  tenant_id  String            @db.Uuid
+  created_by String            @db.Uuid
+  created_at DateTime          @default(now())
+  updated_at DateTime          @updatedAt
+  section    String
+  blow_room  Json
+  carding    Json[]
+  drawing    Json[]
+  framing    Json[]
+  simplex    Json[]
+  spinning   Json[]
+  autoconer  Json[]
+  total      Decimal           @default(0)
+  remarks    String?
+  order_id   String?           @db.Uuid
+  logs       production_logs[]
+  creator    users             @relation(fields: [created_by], references: [id])
+  order      orders?           @relation(fields: [order_id], references: [id])
+  tenant     tenants           @relation(fields: [tenant_id], references: [id])
 
   @@unique([date, tenant_id])
   @@index([date])
@@ -359,9 +356,8 @@ model raw_cotton_compositions {
   percentage Decimal  @db.Decimal(5, 2)
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
-
-  shade  shades  @relation(fields: [shade_id], references: [id])
-  cotton cottons @relation(fields: [cotton_id], references: [id])
+  cotton     cottons  @relation(fields: [cotton_id], references: [id])
+  shade      shades   @relation(fields: [shade_id], references: [id])
 
   @@unique([shade_id, cotton_id])
   @@index([shade_id])
@@ -381,7 +377,6 @@ model cottons {
 }
 
 model employees {
-  id         String       @id @default(uuid()) @db.Uuid
   name       String
   token_no   String       @unique
   shift_rate Decimal      @db.Decimal(10, 2)
@@ -392,6 +387,7 @@ model employees {
   join_date  DateTime?
   created_at DateTime     @default(now())
   updated_at DateTime     @default(now()) @updatedAt
+  id         String       @id @default(uuid()) @db.Uuid
   Attendance Attendance[]
 }
 
@@ -424,40 +420,30 @@ model EmailTemplate {
 }
 
 model Campaign {
-  id          String       @id @default(uuid()) @db.Uuid
   tenant_id   String
   subject     String
   bodyHtml    String
   createdAt   DateTime     @default(now())
   name        String
   recipients  String[]
+  id          String       @id @default(uuid()) @db.Uuid
   emailEvents EmailEvent[]
 }
 
 model EmailEvent {
   id         String         @id @default(uuid()) @db.Uuid
-  emailId    String // Resend email ID
+  emailId    String
   campaignId String?        @db.Uuid
-  recipient  String // Email address
+  recipient  String
   eventType  EmailEventType
-  eventData  Json? // Additional event data (bounce details, click info, etc.)
+  eventData  Json?
   createdAt  DateTime       @default(now())
-  campaign   Campaign?      @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  campaign   Campaign?      @relation(fields: [campaignId], references: [id])
 
   @@index([emailId])
   @@index([recipient])
   @@index([eventType])
   @@index([campaignId])
-}
-
-enum EmailEventType {
-  SENT
-  DELIVERED
-  DELIVERY_DELAYED
-  COMPLAINED
-  BOUNCED
-  OPENED
-  CLICKED
 }
 
 model BouncedEmail {
@@ -470,12 +456,6 @@ model BouncedEmail {
   updatedAt     DateTime   @default(now()) @updatedAt
 
   @@index([email])
-}
-
-enum BounceType {
-  HARD
-  SOFT
-  SUPPRESSED
 }
 
 model Attendance {
@@ -494,13 +474,6 @@ model Attendance {
   employee        employees        @relation(fields: [employee_id], references: [id])
 
   @@unique([date, employee_id])
-}
-
-enum AttendanceStatus {
-  PRESENT
-  ABSENT
-  HALF_DAY
-  LEAVE
 }
 
 model PotentialBuyer {
@@ -527,34 +500,33 @@ model MailingListRecipient {
 }
 
 model purchase_orders {
-  id                    String    @id @default(uuid()) @db.Uuid
-  tenant_id             String    @db.Uuid
+  id                    String                 @id @default(uuid()) @db.Uuid
+  tenant_id             String                 @db.Uuid
   po_number             String
   po_date               DateTime?
-  status                String    @default("uploaded") // uploaded | verified | converted
-  linked_sales_order_id String?   @db.Uuid // Link to orders.id (optional)
-
-  buyer_name          String
-  buyer_contact_name  String?
-  buyer_contact_phone String?
-  buyer_email         String?
-  buyer_address       String?
-  buyer_gst_no        String?
-  buyer_pan_no        String?
-  supplier_name       String?
-  supplier_gst_no     String?
-  payment_terms       String?
-  style_ref_no        String?
-  delivery_address    String?
-  tax_details         Json?
-  grand_total         Decimal                @db.Decimal(12, 2)
-  amount_in_words     String?
-  notes               String?
-  created_at          DateTime               @default(now())
-  updated_at          DateTime               @default(now())
-  created_by          String?
-  items               purchase_order_items[]
-  sales_order         orders?                @relation(fields: [linked_sales_order_id], references: [id])
+  status                String                 @default("uploaded")
+  linked_sales_order_id String?                @db.Uuid
+  buyer_name            String
+  buyer_contact_name    String?
+  buyer_contact_phone   String?
+  buyer_email           String?
+  buyer_address         String?
+  buyer_gst_no          String?
+  buyer_pan_no          String?
+  supplier_name         String?
+  supplier_gst_no       String?
+  payment_terms         String?
+  style_ref_no          String?
+  delivery_address      String?
+  tax_details           Json?
+  grand_total           Decimal                @db.Decimal(12, 2)
+  amount_in_words       String?
+  notes                 String?
+  created_at            DateTime               @default(now())
+  updated_at            DateTime               @default(now())
+  created_by            String?
+  items                 purchase_order_items[]
+  sales_order           orders?                @relation(fields: [linked_sales_order_id], references: [id])
 }
 
 model purchase_order_items {
@@ -572,4 +544,82 @@ model purchase_order_items {
   taxable_amount    Decimal         @db.Decimal(12, 2)
   shade_no          String?
   purchase_order    purchase_orders @relation(fields: [purchase_order_id], references: [id], onDelete: Cascade)
+}
+
+model CompanyPersona {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenant_id String   @unique @db.Uuid
+  persona   String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tenant    tenants  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+}
+
+model GrowthCampaign {
+  id               String            @id @default(uuid()) @db.Uuid
+  tenant_id        String            @db.Uuid
+  name             String
+  keywords         String[]
+  region           String?
+  status           CampaignStatus    @default(DRAFT)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  discoveredBrands DiscoveredBrand[]
+  tenant           tenants           @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+}
+
+model DiscoveredBrand {
+  id                 String         @id @default(uuid()) @db.Uuid
+  campaign_id        String         @db.Uuid
+  companyName        String
+  website            String?
+  productFitAnalysis String
+  discoverySource    String?
+  status             BrandStatus    @default(DISCOVERED)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  campaign           GrowthCampaign @relation(fields: [campaign_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+enum EmailEventType {
+  SENT
+  DELIVERED
+  DELIVERY_DELAYED
+  COMPLAINED
+  BOUNCED
+  OPENED
+  CLICKED
+}
+
+enum BounceType {
+  HARD
+  SOFT
+  SUPPRESSED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  HALF_DAY
+  LEAVE
+}
+
+enum CampaignStatus {
+  DRAFT
+  ANALYZING
+  READY_FOR_OUTREACH
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+enum BrandStatus {
+  DISCOVERED
+  SUPPLIERS_IDENTIFIED
+  CONTACTS_ENRICHED
+  CONTACTED
+  RESPONDED
+  QUALIFIED
+  CONVERTED
 }
