@@ -71,6 +71,42 @@ router.post('/persona', flexibleAuthMiddleware, growthController.upsertCompanyPe
 
 /**
  * @swagger
+ * /growth/persona/generate:
+ *   post:
+ *     summary: Trigger AI-powered persona generation (frontend proxy endpoint)
+ *     tags: [Growth Engine]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - personaData
+ *             properties:
+ *               personaData:
+ *                 type: string
+ *                 description: User input for persona generation
+ *     responses:
+ *       202:
+ *         description: Persona generation process initiated successfully
+ *       400:
+ *         description: Invalid request data
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ *       503:
+ *         description: Automation service unavailable
+ *       408:
+ *         description: Request timeout
+ */
+router.post('/persona/generate', verifyToken, growthController.triggerPersonaGeneration);
+
+/**
+ * @swagger
  * /growth/campaigns:
  *   get:
  *     summary: Get all growth campaigns for current tenant

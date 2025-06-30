@@ -1,4 +1,5 @@
 const { PrismaClient } = require('@prisma/client');
+const axios = require('axios');
 const prisma = new PrismaClient();
 
 /**
@@ -37,6 +38,84 @@ exports.getCompanyPersona = async (req, res) => {
 };
 
 /**
+ * NEW: Proxy controller to trigger n8n workflow securely
+ * Receives requests from frontend, then makes server-to-server call to n8n
+ */
+exports.triggerPersonaGeneration = async (req, res) => {
+  try {
+    // 1. Get tenantId securely from the authenticated user's token
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Missing tenant ID in token' });
+    }
+
+    const { personaData } = req.body;
+    if (!personaData || typeof personaData !== 'string') {
+      return res.status(400).json({ 
+        error: 'Persona data is required and must be a string' 
+      });
+    }
+
+    console.log(`🚀 [GROWTH] Triggering persona generation for tenant: ${tenantId}`);
+
+    // 2. Get the secret n8n webhook URL from environment variables
+    const n8nWebhookUrl = process.env.N8N_PERSONA_BUILDER_WEBHOOK_URL;
+    if (!n8nWebhookUrl) {
+      console.error('❌ [GROWTH] N8N_PERSONA_BUILDER_WEBHOOK_URL is not set');
+      return res.status(500).json({ 
+        message: 'Automation service is not configured. Please contact support.' 
+      });
+    }
+
+    // 3. Make the secure server-to-server call to n8n
+    console.log(`📡 [GROWTH] Calling n8n webhook: ${n8nWebhookUrl}`);
+    
+    const n8nResponse = await axios.post(n8nWebhookUrl, {
+      personaData: personaData,
+      tenantId: tenantId, // Pass the secure tenantId to the workflow
+    }, {
+      timeout: 30000, // 30 second timeout
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'Texintelli-SPIMS/1.0'
+      }
+    });
+
+    console.log(`✅ [GROWTH] n8n webhook called successfully. Status: ${n8nResponse.status}`);
+
+    // 4. Respond to the frontend immediately to let it know the process has started
+    res.status(202).json({ 
+      message: 'Persona generation process has been successfully initiated.',
+      status: 'processing',
+      tenantId: tenantId
+    });
+
+  } catch (error) {
+    console.error('❌ [GROWTH] Error triggering n8n workflow:', error);
+    
+    // Provide specific error messages based on the type of error
+    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+      return res.status(503).json({ 
+        message: 'Automation service is currently unavailable. Please try again later.',
+        error: 'SERVICE_UNAVAILABLE'
+      });
+    }
+    
+    if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+      return res.status(408).json({ 
+        message: 'Request to automation service timed out. Please try again.',
+        error: 'TIMEOUT'
+      });
+    }
+
+    res.status(500).json({ 
+      message: 'Failed to trigger automation workflow. Please try again.',
+      error: 'INTERNAL_ERROR'
+    });
+  }
+};
+
+/**
  * Create or update the Company Persona
  * Supports both JWT authentication (frontend) and n8n API key authentication (n8n workflows)
  */
@@ -61,6 +140,14 @@ exports.upsertCompanyPersona = async (req, res) => {
     } else {
       return res.status(401).json({ 
         error: 'Authentication required. Provide either Bearer token or x-api-key header with tenantId.' 
+      });
+    }
+
+    // Validate UUID format for tenantId
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(tenantId)) {
+      return res.status(400).json({ 
+        error: 'tenantId must be a valid UUID format (e.g., 123e4567-e89b-12d3-a456-426614174000)' 
       });
     }
 
