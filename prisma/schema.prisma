@@ -719,11 +719,29 @@ model DiscoveredSupplier {
   relevanceScore    Int?            @default(0) // A score for prioritization
   discoveredBrandId String          @db.Uuid
   discoveredBrand   DiscoveredBrand @relation(fields: [discoveredBrandId], references: [id], onDelete: Cascade)
+  targetContacts    TargetContact[] // New relation for contacts
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
   @@index([discoveredBrandId])
   @@map("DiscoveredSupplier")
+}
+
+model TargetContact {
+  id                   String             @id @default(uuid()) @db.Uuid
+  name                 String
+  title                String?
+  email                String?
+  linkedinUrl          String?
+  source               String?            @default("n8n-apollo-enrichment")
+  discoveredSupplierId String             @db.Uuid
+  discoveredSupplier   DiscoveredSupplier @relation(fields: [discoveredSupplierId], references: [id], onDelete: Cascade)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@index([discoveredSupplierId])
+  @@index([email])
+  @@map("TargetContact")
 }
 
 // ============================================

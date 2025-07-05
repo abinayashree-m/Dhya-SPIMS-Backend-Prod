@@ -1109,4 +1109,147 @@ exports.getDiscoveredSuppliers = async (req, res) => {
       details: error.message 
     });
   }
+};
+
+/**
+ * 👥 WEBHOOK: Save target contacts from n8n
+ * Saves contacts found by the n8n workflow for a specific supplier.
+ * Called by n8n via webhook with API key authentication.
+ */
+exports.saveTargetContacts = async (req, res) => {
+  console.log('👥 [GROWTH] === SAVE TARGET CONTACTS REQUEST ===');
+  
+  try {
+    const { supplierId } = req.params;
+    const { contacts } = req.body;
+
+    console.log(`👥 [GROWTH] Request details:`, {
+      supplierId: supplierId,
+      contactsCount: contacts?.length || 0,
+      hasApiKey: !!req.headers['x-api-key'],
+      userAgent: req.headers['user-agent']
+    });
+
+    if (!contacts || !Array.isArray(contacts)) {
+      console.log('❌ [GROWTH] Invalid contacts data - must be an array');
+      return res.status(400).json({ 
+        error: 'Invalid request body',
+        message: 'Request body must contain a "contacts" array.'
+      });
+    }
+
+    console.log(`👥 [GROWTH] Processing ${contacts.length} contacts for supplier: ${supplierId}`);
+
+    // Verify supplier exists
+    const supplier = await prisma.discoveredSupplier.findUnique({
+      where: { id: supplierId }
+    });
+
+    if (!supplier) {
+      console.log(`❌ [GROWTH] Supplier not found: ${supplierId}`);
+      return res.status(404).json({ 
+        error: 'Supplier not found',
+        message: `Supplier with ID ${supplierId} not found.`
+      });
+    }
+
+    console.log(`👥 [GROWTH] Supplier found: ${supplier.companyName}, proceeding to save contacts`);
+
+    // Save contacts
+    const contactsData = contacts.map(contact => ({
+      discoveredSupplierId: supplierId,
+      name: contact.name || contact.fullName || 'Unknown Contact',
+      title: contact.title || contact.jobTitle,
+      email: contact.email,
+      linkedinUrl: contact.linkedinUrl || contact.linkedin_url,
+      source: contact.source || 'n8n-apollo-enrichment'
+    }));
+
+    console.log(`👥 [GROWTH] Saving ${contactsData.length} contacts:`, 
+      contactsData.map(c => ({ name: c.name, title: c.title, email: c.email }))
+    );
+
+    await prisma.targetContact.createMany({ 
+      data: contactsData,
+      skipDuplicates: true // Prevents errors if an email already exists
+    });
+
+    // Update associated brand status to indicate contacts have been enriched
+    await prisma.discoveredBrand.update({
+      where: { id: supplier.discoveredBrandId },
+      data: { status: 'CONTACTS_ENRICHED' }
+    });
+
+    console.log(`✅ [GROWTH] Successfully saved ${contacts.length} contacts for supplier: ${supplierId}`);
+    console.log('✅ [GROWTH] === SAVE TARGET CONTACTS SUCCESS ===');
+    
+    res.status(201).json({ 
+      message: `Successfully processed ${contacts.length} contacts`,
+      supplierId: supplierId,
+      contactsCount: contacts.length
+    });
+  } catch (error) {
+    console.error('❌ [GROWTH] === SAVE TARGET CONTACTS ERROR ===');
+    console.error('❌ [GROWTH] Error saving target contacts:', error);
+    console.error('❌ [GROWTH] Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to save target contacts',
+      details: error.message 
+    });
+  }
+};
+
+/**
+ * 📋 GET TARGET CONTACTS: Retrieve contacts for a supplier
+ * Called by the frontend to get target contacts for a specific supplier.
+ */
+exports.getTargetContacts = async (req, res) => {
+  console.log('📋 [GROWTH] === GET TARGET CONTACTS REQUEST ===');
+  
+  try {
+    const { supplierId } = req.params;
+    const tenantId = req.user?.tenantId;
+    
+    if (!tenantId) {
+      console.log('❌ [GROWTH] Missing tenant ID in token');
+      return res.status(400).json({ error: 'Missing tenant ID in token' });
+    }
+
+    console.log(`📋 [GROWTH] Getting contacts for supplier: ${supplierId}, tenant: ${tenantId}`);
+
+    // First verify the supplier exists and belongs to the tenant
+    const supplier = await prisma.discoveredSupplier.findFirst({
+      where: { 
+        id: supplierId,
+        discoveredBrand: {
+          campaign: {
+            tenantId: tenantId
+          }
+        }
+      },
+      include: {
+        targetContacts: {
+          orderBy: [
+            { createdAt: 'desc' }
+          ]
+        }
+      }
+    });
+
+    if (!supplier) {
+      console.log(`❌ [GROWTH] Supplier not found or unauthorized: ${supplierId}`);
+      return res.status(404).json({ error: 'Supplier not found or unauthorized' });
+    }
+
+    console.log(`✅ [GROWTH] Found ${supplier.targetContacts?.length || 0} contacts for supplier: ${supplierId}`);
+    console.log('✅ [GROWTH] === GET TARGET CONTACTS SUCCESS ===');
+    
+    res.status(200).json(supplier.targetContacts || []);
+  } catch (error) {
+    console.error('❌ [GROWTH] Error getting target contacts:', error);
+    res.status(500).json({ 
+      error: 'Failed to get target contacts',
+      details: error.message 
+    });
+  }
 }; 

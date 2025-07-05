@@ -435,6 +435,88 @@ router.post('/brands/:brandId/suppliers', n8nAuthMiddleware, growthController.sa
 
 /**
  * @swagger
+ * /growth/suppliers/{supplierId}/contacts:
+ *   get:
+ *     summary: Get target contacts for a supplier
+ *     tags: [Growth Engine]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: supplierId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Supplier ID
+ *     responses:
+ *       200:
+ *         description: Contacts retrieved successfully
+ *       400:
+ *         description: Invalid request data
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Supplier not found
+ *       500:
+ *         description: Server error
+ *   post:
+ *     summary: Save target contacts from n8n workflow (n8n only)
+ *     tags: [Growth Engine]
+ *     security:
+ *       - apiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: supplierId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Supplier ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - contacts
+ *             properties:
+ *               contacts:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     name:
+ *                       type: string
+ *                       description: Contact full name
+ *                     title:
+ *                       type: string
+ *                       description: Contact job title
+ *                     email:
+ *                       type: string
+ *                       description: Contact email address
+ *                     linkedinUrl:
+ *                       type: string
+ *                       description: LinkedIn profile URL
+ *                     source:
+ *                       type: string
+ *                       description: Source of contact information
+ *     responses:
+ *       201:
+ *         description: Contacts saved successfully
+ *       400:
+ *         description: Invalid request data
+ *       401:
+ *         description: Unauthorized (invalid API key)
+ *       404:
+ *         description: Supplier not found
+ *       500:
+ *         description: Server error
+ */
+router.get('/suppliers/:supplierId/contacts', verifyToken, growthController.getTargetContacts);
+router.post('/suppliers/:supplierId/contacts', n8nAuthMiddleware, growthController.saveTargetContacts);
+
+/**
+ * @swagger
  * /growth/campaigns/{campaignId}/brands:
  *   post:
  *     summary: Save discovered brands from n8n workflow (n8n only)
