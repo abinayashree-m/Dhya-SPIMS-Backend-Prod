@@ -680,4 +680,139 @@ exports.saveDiscoveredBrands = async (req, res) => {
       details: error.message 
     });
   }
+};
+
+/**
+ * 🔧 INTERNAL SERVICE: Get Company Persona for a specific tenant
+ * Fetches a Company Persona for a specific tenant.
+ * Called by internal services (n8n) using API key authentication.
+ * The tenant ID is provided as a URL parameter.
+ */
+exports.getPersonaForService = async (req, res) => {
+  console.log('🔍 [GROWTH INTERNAL] === GET PERSONA FOR SERVICE REQUEST ===');
+  
+  const { tenantId } = req.params; // Get tenantId from the URL parameter
+  
+  console.log(`🔍 [GROWTH INTERNAL] Request details:`, {
+    tenantId: tenantId,
+    tenantIdType: typeof tenantId,
+    hasApiKey: !!req.headers['x-api-key'],
+    userAgent: req.headers['user-agent']
+  });
+
+  if (!tenantId) {
+    console.log('❌ [GROWTH INTERNAL] Missing tenant ID in URL parameter');
+    return res.status(400).json({ 
+      error: 'Tenant ID is required in the URL path',
+      message: 'Please provide tenantId as a URL parameter: /internal/persona/:tenantId' 
+    });
+  }
+
+  // Validate UUID format
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(tenantId)) {
+    console.log(`❌ [GROWTH INTERNAL] Invalid tenant ID format: ${tenantId}`);
+    return res.status(400).json({ 
+      error: 'Invalid tenant ID format',
+      message: 'Tenant ID must be a valid UUID' 
+    });
+  }
+
+  try {
+    console.log(`🔍 [GROWTH INTERNAL] Fetching persona for tenant: ${tenantId}`);
+    
+    const persona = await prisma.companyPersona.findUnique({
+      where: { tenantId: tenantId },
+    });
+
+    if (!persona) {
+      console.log(`❌ [GROWTH INTERNAL] Persona not found for tenant: ${tenantId}`);
+      return res.status(404).json({ 
+        error: 'Company Persona not found',
+        message: `Company Persona not found for tenant: ${tenantId}` 
+      });
+    }
+
+    console.log(`✅ [GROWTH INTERNAL] Persona found for tenant: ${tenantId}`, {
+      id: persona.id,
+      isActive: persona.isActive,
+      createdAt: persona.createdAt,
+      updatedAt: persona.updatedAt,
+      executiveSummaryLength: persona.executiveSummary?.length || 0,
+      targetMarketSweetSpotLength: persona.targetMarketSweetSpot?.length || 0,
+      hasSwotAnalysis: !!persona.swotAnalysis,
+      hasDetailedAnalysis: !!persona.detailedAnalysis
+    });
+    console.log('✅ [GROWTH INTERNAL] === GET PERSONA FOR SERVICE SUCCESS ===');
+    
+    res.status(200).json(persona);
+  } catch (error) {
+    console.error('❌ [GROWTH INTERNAL] === GET PERSONA FOR SERVICE ERROR ===');
+    console.error(`❌ [GROWTH INTERNAL] Error fetching persona for tenant ${tenantId}:`, error);
+    console.error('❌ [GROWTH INTERNAL] Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Error fetching company persona',
+      message: 'Internal server error while fetching company persona',
+      details: error.message 
+    });
+  }
+};
+
+/**
+ * 🆕 NEW: Get details for a specific campaign with discovered brands
+ * Fetches details and discovered brands for a specific campaign.
+ * Called by the frontend.
+ */
+exports.getCampaignDetails = async (req, res) => {
+  console.log('🔍 [GROWTH] === GET CAMPAIGN DETAILS REQUEST ===');
+  
+  try {
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) {
+      console.log('❌ [GROWTH] Missing tenant ID in token');
+      return res.status(400).json({ error: 'Missing tenant ID in token' });
+    }
+
+    const { campaignId } = req.params;
+    console.log(`🔍 [GROWTH] Fetching details for campaign: ${campaignId}, tenant: ${tenantId}`);
+
+    const campaign = await prisma.growthCampaign.findFirst({
+      where: { 
+        id: campaignId, 
+        tenantId: tenantId // Ensure tenant ownership
+      },
+      include: {
+        discoveredBrands: {
+          orderBy: { createdAt: 'asc' }
+        }
+      }
+    });
+
+    if (!campaign) {
+      console.log(`❌ [GROWTH] Campaign not found: ${campaignId} for tenant: ${tenantId}`);
+      return res.status(404).json({ 
+        error: 'Campaign not found',
+        message: 'Campaign not found or you do not have permission to access it.'
+      });
+    }
+
+    console.log(`✅ [GROWTH] Campaign details retrieved: ${campaignId}`, {
+      id: campaign.id,
+      name: campaign.name,
+      status: campaign.status,
+      brandsCount: campaign.discoveredBrands?.length || 0,
+      keywordsCount: campaign.keywords?.length || 0
+    });
+    console.log('✅ [GROWTH] === GET CAMPAIGN DETAILS SUCCESS ===');
+    
+    res.status(200).json(campaign);
+  } catch (error) {
+    console.error('❌ [GROWTH] === GET CAMPAIGN DETAILS ERROR ===');
+    console.error(`❌ [GROWTH] Error fetching details for campaign ${req.params.campaignId}:`, error);
+    console.error('❌ [GROWTH] Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to fetch campaign details',
+      details: error.message 
+    });
+  }
 }; 
