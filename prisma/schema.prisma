@@ -705,8 +705,25 @@ model DiscoveredBrand {
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
   campaign           GrowthCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  discoveredSuppliers DiscoveredSupplier[]
 
   @@map("DiscoveredBrand")
+}
+
+model DiscoveredSupplier {
+  id                String          @id @default(uuid()) @db.Uuid
+  companyName       String
+  country           String?
+  specialization    String?         // e.g., "Knitwear", "Denim", "Woven"
+  sourceUrl         String?         // URL where the supplier info was found
+  relevanceScore    Int?            @default(0) // A score for prioritization
+  discoveredBrandId String          @db.Uuid
+  discoveredBrand   DiscoveredBrand @relation(fields: [discoveredBrandId], references: [id], onDelete: Cascade)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([discoveredBrandId])
+  @@map("DiscoveredSupplier")
 }
 
 // ============================================

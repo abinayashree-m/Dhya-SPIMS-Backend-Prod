@@ -724,6 +724,14 @@ exports.saveDiscoveredBrands = async (req, res) => {
     );
 
     console.log(`✅ [GROWTH] Saved ${savedBrands.length} brands for campaign: ${campaignId}`);
+    
+    // Update campaign status to COMPLETED after saving brands
+    await prisma.growthCampaign.update({
+      where: { id: campaignId },
+      data: { status: 'COMPLETED' }
+    });
+    
+    console.log(`✅ [GROWTH] Updated campaign status to COMPLETED for campaign: ${campaignId}`);
     console.log('✅ [GROWTH] === SAVE DISCOVERED BRANDS SUCCESS ===');
     
     res.status(201).json({
@@ -871,6 +879,233 @@ exports.getCampaignDetails = async (req, res) => {
     console.error('❌ [GROWTH] Error stack:', error.stack);
     res.status(500).json({ 
       error: 'Failed to fetch campaign details',
+      details: error.message 
+    });
+  }
+};
+
+/**
+ * 🔍 SUPPLIER DISCOVERY: Trigger supplier search for a brand
+ * Initiates the n8n workflow to find suppliers for a specific brand.
+ * Called by the frontend.
+ */
+exports.findSuppliersForBrand = async (req, res) => {
+  console.log('🔍 [GROWTH] === FIND SUPPLIERS FOR BRAND REQUEST ===');
+  
+  try {
+    const { brandId } = req.params;
+    const tenantId = req.user?.tenantId;
+    
+    if (!tenantId) {
+      console.log('❌ [GROWTH] Missing tenant ID in token');
+      return res.status(400).json({ error: 'Missing tenant ID in token' });
+    }
+
+    console.log(`🔍 [GROWTH] Finding suppliers for brand: ${brandId}, tenant: ${tenantId}`);
+
+    // Verify brand exists and belongs to tenant
+    const brand = await prisma.discoveredBrand.findFirst({
+      where: { 
+        id: brandId,
+        campaign: {
+          tenantId: tenantId // Ensure tenant ownership
+        }
+      },
+      include: {
+        campaign: true
+      }
+    });
+
+    if (!brand) {
+      console.log(`❌ [GROWTH] Brand not found: ${brandId} for tenant: ${tenantId}`);
+      return res.status(404).json({ 
+        error: 'Brand not found',
+        message: 'Brand not found or you do not have permission to access it.'
+      });
+    }
+
+    console.log(`✅ [GROWTH] Brand found: ${brand.companyName}, triggering supplier discovery`);
+
+    // Trigger n8n workflow for supplier discovery
+    const webhookUrl = process.env.N8N_SUPPLIERFINDER_WEBHOOK_URL;
+    if (webhookUrl) {
+      console.log(`🔗 [GROWTH] Triggering n8n SupplierFinder workflow for brand: ${brandId}`);
+      
+      // Send brand info to n8n workflow
+      axios.post(webhookUrl, {
+        brandId: brand.id,
+        companyName: brand.companyName,
+        website: brand.website,
+        campaignId: brand.campaignId,
+        tenantId: tenantId
+      }).catch(err => {
+        console.error(`❌ [GROWTH] Failed to trigger SupplierFinder workflow for brand ${brandId}:`, err.message);
+      });
+    } else {
+      console.log('⚠️ [GROWTH] N8N_SUPPLIERFINDER_WEBHOOK_URL not configured, skipping workflow trigger');
+    }
+
+    // Update brand status to indicate supplier discovery is in progress
+    await prisma.discoveredBrand.update({
+      where: { id: brandId },
+      data: { status: 'SUPPLIERS_IDENTIFIED' }
+    });
+
+    console.log(`✅ [GROWTH] Supplier discovery initiated for brand: ${brandId}`);
+    console.log('✅ [GROWTH] === FIND SUPPLIERS FOR BRAND SUCCESS ===');
+    
+    res.status(202).json({ 
+      message: 'Supplier discovery process initiated',
+      brandId: brandId,
+      brandName: brand.companyName
+    });
+  } catch (error) {
+    console.error('❌ [GROWTH] === FIND SUPPLIERS FOR BRAND ERROR ===');
+    console.error(`❌ [GROWTH] Error finding suppliers for brand ${req.params.brandId}:`, error);
+    console.error('❌ [GROWTH] Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to start supplier discovery',
+      details: error.message 
+    });
+  }
+};
+
+/**
+ * 💾 WEBHOOK: Save discovered suppliers from n8n
+ * Saves suppliers found by the n8n workflow to the database.
+ * Called by n8n via webhook with API key authentication.
+ */
+exports.saveDiscoveredSuppliers = async (req, res) => {
+  console.log('💾 [GROWTH] === SAVE DISCOVERED SUPPLIERS REQUEST ===');
+  
+  try {
+    const { brandId } = req.params;
+    const { suppliers } = req.body;
+
+    console.log(`💾 [GROWTH] Request details:`, {
+      brandId: brandId,
+      suppliersCount: suppliers?.length || 0,
+      hasApiKey: !!req.headers['x-api-key'],
+      userAgent: req.headers['user-agent']
+    });
+
+    if (!suppliers || !Array.isArray(suppliers)) {
+      console.log('❌ [GROWTH] Invalid suppliers data - must be an array');
+      return res.status(400).json({ 
+        error: 'Invalid request body',
+        message: 'Request body must contain a "suppliers" array.'
+      });
+    }
+
+    console.log(`💾 [GROWTH] Processing ${suppliers.length} suppliers for brand: ${brandId}`);
+
+    // Verify brand exists
+    const brand = await prisma.discoveredBrand.findUnique({
+      where: { id: brandId }
+    });
+
+    if (!brand) {
+      console.log(`❌ [GROWTH] Brand not found: ${brandId}`);
+      return res.status(404).json({ 
+        error: 'Brand not found',
+        message: `Brand with ID ${brandId} not found.`
+      });
+    }
+
+    console.log(`💾 [GROWTH] Brand found: ${brand.companyName}, proceeding to save suppliers`);
+
+    // Save suppliers
+    const suppliersData = suppliers.map(supplier => ({
+      discoveredBrandId: brandId,
+      companyName: supplier.companyName || supplier.name || 'Unknown Supplier',
+      country: supplier.country,
+      specialization: supplier.specialization,
+      sourceUrl: supplier.sourceUrl,
+      relevanceScore: supplier.relevanceScore || 0
+    }));
+
+    console.log(`💾 [GROWTH] Saving ${suppliersData.length} suppliers:`, 
+      suppliersData.map(s => ({ name: s.companyName, country: s.country, specialization: s.specialization }))
+    );
+
+    await prisma.discoveredSupplier.createMany({ 
+      data: suppliersData 
+    });
+
+    // Update brand status to indicate suppliers have been identified
+    await prisma.discoveredBrand.update({
+      where: { id: brandId },
+      data: { status: 'SUPPLIERS_IDENTIFIED' }
+    });
+
+    console.log(`✅ [GROWTH] Successfully saved ${suppliers.length} suppliers for brand: ${brandId}`);
+    console.log('✅ [GROWTH] === SAVE DISCOVERED SUPPLIERS SUCCESS ===');
+    
+    res.status(201).json({ 
+      message: `Successfully saved ${suppliers.length} suppliers`,
+      brandId: brandId,
+      suppliersCount: suppliers.length
+    });
+  } catch (error) {
+    console.error('❌ [GROWTH] === SAVE DISCOVERED SUPPLIERS ERROR ===');
+    console.error('❌ [GROWTH] Error saving discovered suppliers:', error);
+    console.error('❌ [GROWTH] Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to save discovered suppliers',
+      details: error.message 
+    });
+  }
+};
+
+/**
+ * 📋 GET DISCOVERED SUPPLIERS: Retrieve suppliers for a brand
+ * Called by the frontend to get discovered suppliers for a specific brand.
+ */
+exports.getDiscoveredSuppliers = async (req, res) => {
+  console.log('📋 [GROWTH] === GET DISCOVERED SUPPLIERS REQUEST ===');
+  
+  try {
+    const { brandId } = req.params;
+    const tenantId = req.user?.tenantId;
+    
+    if (!tenantId) {
+      console.log('❌ [GROWTH] Missing tenant ID in token');
+      return res.status(400).json({ error: 'Missing tenant ID in token' });
+    }
+
+    console.log(`📋 [GROWTH] Getting suppliers for brand: ${brandId}, tenant: ${tenantId}`);
+
+    // First verify the brand exists and belongs to the tenant
+    const brand = await prisma.discoveredBrand.findFirst({
+      where: { 
+        id: brandId,
+        campaign: {
+          tenantId: tenantId
+        }
+      },
+      include: {
+        discoveredSuppliers: {
+          orderBy: [
+            { relevanceScore: 'desc' },
+            { createdAt: 'desc' }
+          ]
+        }
+      }
+    });
+
+    if (!brand) {
+      console.log(`❌ [GROWTH] Brand not found or unauthorized: ${brandId}`);
+      return res.status(404).json({ error: 'Brand not found or unauthorized' });
+    }
+
+    console.log(`✅ [GROWTH] Found ${brand.discoveredSuppliers?.length || 0} suppliers for brand: ${brandId}`);
+    console.log('✅ [GROWTH] === GET DISCOVERED SUPPLIERS SUCCESS ===');
+    
+    res.status(200).json(brand.discoveredSuppliers || []);
+  } catch (error) {
+    console.error('❌ [GROWTH] Error getting discovered suppliers:', error);
+    res.status(500).json({ 
+      error: 'Failed to get discovered suppliers',
       details: error.message 
     });
   }

@@ -186,6 +186,33 @@ router.post('/campaigns', verifyToken, growthController.createGrowthCampaign);
 
 /**
  * @swagger
+ * /growth/campaigns/{campaignId}:
+ *   get:
+ *     summary: Get growth campaign details
+ *     tags: [Growth Engine]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: campaignId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Campaign ID
+ *     responses:
+ *       200:
+ *         description: Campaign details retrieved successfully
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Campaign not found
+ *       500:
+ *         description: Server error
+ */
+router.get('/campaigns/:campaignId', verifyToken, growthController.getCampaignDetails);
+
+/**
+ * @swagger
  * /growth/campaigns/{campaignId}/status:
  *   put:
  *     summary: Update growth campaign status
@@ -292,6 +319,119 @@ router.get('/campaigns/:campaignId/brands', verifyToken, growthController.getDis
  *         description: Server error
  */
 router.put('/brands/:brandId/status', verifyToken, growthController.updateBrandStatus);
+
+// --- SUPPLIER DISCOVERY ROUTES ---
+
+/**
+ * @swagger
+ * /growth/brands/{brandId}/find-suppliers:
+ *   post:
+ *     summary: Find suppliers for a discovered brand
+ *     tags: [Growth Engine]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: brandId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Brand ID
+ *     responses:
+ *       202:
+ *         description: Supplier discovery process initiated
+ *       400:
+ *         description: Invalid request data
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Brand not found
+ *       500:
+ *         description: Server error
+ */
+router.post('/brands/:brandId/find-suppliers', verifyToken, growthController.findSuppliersForBrand);
+
+/**
+ * @swagger
+ * /growth/brands/{brandId}/suppliers:
+ *   get:
+ *     summary: Get discovered suppliers for a brand
+ *     tags: [Growth Engine]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: brandId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Brand ID
+ *     responses:
+ *       200:
+ *         description: Suppliers retrieved successfully
+ *       400:
+ *         description: Invalid request data
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Brand not found
+ *       500:
+ *         description: Server error
+ *   post:
+ *     summary: Save discovered suppliers from n8n workflow (n8n only)
+ *     tags: [Growth Engine]
+ *     security:
+ *       - apiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: brandId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Brand ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - suppliers
+ *             properties:
+ *               suppliers:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     companyName:
+ *                       type: string
+ *                       description: Supplier company name
+ *                     country:
+ *                       type: string
+ *                       description: Supplier country
+ *                     specialization:
+ *                       type: string
+ *                       description: Supplier specialization (e.g., "Knitwear", "Denim")
+ *                     sourceUrl:
+ *                       type: string
+ *                       description: URL where supplier info was found
+ *                     relevanceScore:
+ *                       type: integer
+ *                       description: Relevance score for prioritization
+ *     responses:
+ *       201:
+ *         description: Suppliers saved successfully
+ *       400:
+ *         description: Invalid request data
+ *       401:
+ *         description: Unauthorized (invalid API key)
+ *       404:
+ *         description: Brand not found
+ *       500:
+ *         description: Server error
+ */
+router.get('/brands/:brandId/suppliers', verifyToken, growthController.getDiscoveredSuppliers);
+router.post('/brands/:brandId/suppliers', n8nAuthMiddleware, growthController.saveDiscoveredSuppliers);
 
 /**
  * @swagger
