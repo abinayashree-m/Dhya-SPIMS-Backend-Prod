@@ -343,4 +343,55 @@ router.put('/brands/:brandId/status', verifyToken, growthController.updateBrandS
  */
 router.post('/campaigns/:campaignId/brands', n8nAuthMiddleware, growthController.saveDiscoveredBrands);
 
+// --- INTERNAL SERVICE ROUTES (for n8n workflows) ---
+
+/**
+ * @swagger
+ * /growth/internal/persona/{tenantId}:
+ *   get:
+ *     summary: Get company persona for a specific tenant (Internal Service)
+ *     description: Fetches company persona for a specific tenant. Used by internal services like n8n workflows.
+ *     tags: [Growth Engine - Internal]
+ *     security:
+ *       - apiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: tenantId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Tenant ID (UUID format)
+ *         example: "3bf9bed5-d468-47c5-9c19-61a7e37faedc"
+ *     responses:
+ *       200:
+ *         description: Company persona retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: string
+ *                 tenantId:
+ *                   type: string
+ *                 executiveSummary:
+ *                   type: string
+ *                 targetMarketSweetSpot:
+ *                   type: string
+ *                 swotAnalysis:
+ *                   type: object
+ *                 detailedAnalysis:
+ *                   type: object
+ *       400:
+ *         description: Invalid tenant ID format
+ *       401:
+ *         description: Unauthorized - Invalid API key
+ *       404:
+ *         description: Company persona not found for this tenant
+ *       500:
+ *         description: Server error
+ */
+router.get('/internal/persona/:tenantId', n8nAuthMiddleware, growthController.getPersonaForService);
+
 module.exports = router; 
