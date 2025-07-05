@@ -3,11 +3,11 @@ const prisma = new PrismaClient();
 
 // Create a new role
 const createRole = async (req, res) => {
-  const { tenant_id, name, permissions } = req.body;
+  const { tenantId, name, permissions } = req.body;
 
   try {
-    const role = await prisma.roles.create({
-      data: { tenant_id, name, permissions },
+    const role = await prisma.role.create({
+      data: { tenantId, name },
     });
 
     res.status(201).json(role);
@@ -22,8 +22,8 @@ const getRolesByTenant = async (req, res) => {
   const { tenantId } = req.query;
 
   try {
-    const roles = await prisma.roles.findMany({
-      where: { tenant_id: tenantId },
+    const roles = await prisma.role.findMany({
+      where: { tenantId: tenantId },
     });
 
     res.json(roles);

@@ -3,27 +3,52 @@ const bcrypt = require('bcrypt');
 const prisma = new PrismaClient();
 
 const getAllUsers = async (req, res) => {
-  const users = await prisma.users.findMany({
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true, // legacy role field
-      is_active: true,
-      created_at: true,
-      user_roles: {
-        include: { role: true }
+  try {
+    const users = await prisma.user.findMany({
+      where: {
+        tenantId: req.user.tenantId
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true, // legacy role field
+        isActive: true,
+        createdAt: true,
+        userRoles: {
+          include: { 
+            role: {
+              select: {
+                id: true,
+                name: true,
+                description: true
+              }
+            }
+          }
+        }
       }
-    }
-  });
-  res.json(users);
+    });
+    
+    // Transform the response to include role information in a consistent format
+    const transformedUsers = users.map(user => ({
+      ...user,
+      // If user has userRoles, use the first role name, otherwise use legacy role
+      primaryRole: user.userRoles.length > 0 ? user.userRoles[0].role.name : user.role,
+      roleDetails: user.userRoles.length > 0 ? user.userRoles[0].role : null
+    }));
+    
+    res.json(transformedUsers);
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
 };
 
 const getUserById = async (req, res) => {
-  const user = await prisma.users.findUnique({
+  const user = await prisma.user.findUnique({
     where: { id: req.params.id },
     include: {
-      user_roles: {
+      userRoles: {
         include: { role: true }
       }
     }
@@ -33,40 +58,40 @@ const getUserById = async (req, res) => {
 };
 
 const createUser = async (req, res) => {
-  const { name, email, password, tenant_id, role_id } = req.body;
+  const { name, email, password, tenantId, roleId } = req.body;
 
-  const existing = await prisma.users.findUnique({ where: { email } });
+  const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) return res.status(409).json({ error: 'Email already in use' });
 
   const hash = await bcrypt.hash(password, 10);
 
   try {
     // Step 1: Create user
-    const user = await prisma.users.create({
+    const user = await prisma.user.create({
       data: {
         name,
         email,
-        password_hash: hash,
-        tenant_id,
+        passwordHash: hash,
+        tenantId,
       }
     });
 
-    // Step 2: Assign role to user (user_roles table)
-    if (role_id) {
-      await prisma.user_roles.create({
+    // Step 2: Assign role to user (userRoles table)
+    if (roleId) {
+      await prisma.userRole.create({
         data: {
-          user_id: user.id,
-          role_id
+          userId: user.id,
+          roleId
         }
       });
     }
 
     // Step 3: Return clean user data
-    const { password_hash, ...userData } = user;
-    const userWithRole = await prisma.users.findUnique({
+    const { passwordHash, ...userData } = user;
+    const userWithRole = await prisma.user.findUnique({
       where: { id: user.id },
       include: {
-        user_roles: {
+        userRoles: {
           include: { role: true }
         }
       }
@@ -81,15 +106,15 @@ const createUser = async (req, res) => {
 
 const updateUser = async (req, res) => {
   const { id } = req.params;
-  const { name, email, is_active, role } = req.body; // ✅ destructure only valid fields
+  const { name, email, isActive, role } = req.body; // ✅ destructure only valid fields
 
   try {
-    const updated = await prisma.users.update({
+    const updated = await prisma.user.update({
       where: { id },
       data: {
         name,
         email,
-        is_active,
+        isActive,
         role, // ✅ only assign scalar fields
       },
     });
@@ -102,9 +127,9 @@ const updateUser = async (req, res) => {
 };
 
 const deleteUser = async (req, res) => {
-  await prisma.users.update({
+  await prisma.user.update({
     where: { id: req.params.id },
-    data: { is_active: false }
+    data: { isActive: false }
   });
   res.json({ message: 'User deactivated' });
 };

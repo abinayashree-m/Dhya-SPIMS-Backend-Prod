@@ -4,17 +4,17 @@ const { Decimal } = require('@prisma/client/runtime/library');
 // 1. Get all orders
 exports.getAllOrders = async () => {
   try {
-    return await prisma.orders.findMany({
+    return await prisma.order.findMany({
       include: {
         buyer: true,
         shade: {
           include: {
-            shade_fibres: {
+            shadeFibres: {
               include: {
                 fibre: true
               }
             },
-            raw_cotton_compositions: {
+            rawCottonCompositions: {
               include: {
                 cotton: true
               }
@@ -22,7 +22,7 @@ exports.getAllOrders = async () => {
           }
         }
       },
-      orderBy: { created_at: 'desc' }
+      orderBy: { createdAt: 'desc' }
     });
   } catch (error) {
     throw new Error('Failed to fetch orders');
@@ -32,18 +32,18 @@ exports.getAllOrders = async () => {
 // 2. Get order by ID
 exports.getOrderById = async (id) => {
   try {
-    return await prisma.orders.findUnique({
+    return await prisma.order.findUnique({
       where: { id },
       include: {
         buyer: true,
         shade: {
           include: {
-            shade_fibres: {
+            shadeFibres: {
               include: {
                 fibre: true
               }
             },
-            raw_cotton_compositions: {
+            rawCottonCompositions: {
               include: {
                 cotton: true
               }
@@ -60,12 +60,12 @@ exports.getOrderById = async (id) => {
 // 3. Create a new order
 exports.createOrder = async (data) => {
   try {
-    const { buyer_id, shade_id, ...orderData } = data;
-    return await prisma.orders.create({
+    const { buyerId, shadeId, ...orderData } = data;
+    return await prisma.order.create({
       data: {
         ...orderData,
-        buyer: { connect: { id: buyer_id } },
-        shade: { connect: { id: shade_id } }
+        buyer: { connect: { id: buyerId } },
+        shade: { connect: { id: shadeId } }
       },
       include: {
         buyer: true,
@@ -81,17 +81,17 @@ exports.createOrder = async (data) => {
 exports.updateOrder = async (id, data) => {
   try {
     // Check if order exists
-    const existingOrder = await prisma.orders.findUnique({
+    const existingOrder = await prisma.order.findUnique({
       where: { id },
       include: {
         shade: {
           include: {
-            raw_cotton_compositions: {
+            rawCottonCompositions: {
               include: {
                 cotton: true
               }
             },
-            shade_fibres: {
+            shadeFibres: {
               include: {
                 fibre: true
               }
@@ -106,46 +106,36 @@ exports.updateOrder = async (id, data) => {
     }
 
     // Validate delivery date
-    if (data.delivery_date && isNaN(Date.parse(data.delivery_date))) {
+    if (data.deliveryDate && isNaN(Date.parse(data.deliveryDate))) {
       throw new Error('Invalid delivery date format');
     }
 
-    // Validate count
-    if (data.count !== undefined && (isNaN(data.count) || data.count <= 0)) {
-      throw new Error('Invalid count value');
-    }
-
     // Validate quantity
-    if (data.quantity_kg !== undefined && (isNaN(data.quantity_kg) || Number(data.quantity_kg) <= 0)) {
+    if (data.quantity !== undefined && (isNaN(data.quantity) || Number(data.quantity) <= 0)) {
       throw new Error('Invalid quantity value');
-    }
-
-    // Validate realisation
-    if (data.realisation !== undefined && (isNaN(data.realisation) || Number(data.realisation) < 0 || Number(data.realisation) > 100)) {
-      throw new Error('Invalid realisation value. Must be between 0 and 100');
     }
 
     // Start a transaction to handle both order update and raw cotton compositions
     const updatedOrder = await prisma.$transaction(async (prisma) => {
       // Update the order
-      const order = await prisma.orders.update({
+      const order = await prisma.order.update({
         where: { id },
         data: {
-          order_number: data.order_number,
-          quantity_kg: data.quantity_kg ? new Decimal(data.quantity_kg.toString()) : undefined,
-          delivery_date: data.delivery_date ? new Date(data.delivery_date) : undefined,
+          orderNumber: data.orderNumber,
+          quantity: data.quantity ? new Decimal(data.quantity.toString()) : undefined,
+          unitPrice: data.unitPrice ? new Decimal(data.unitPrice.toString()) : undefined,
+          totalAmount: data.totalAmount ? new Decimal(data.totalAmount.toString()) : undefined,
+          deliveryDate: data.deliveryDate ? new Date(data.deliveryDate) : undefined,
           status: data.status,
-          created_by: data.created_by,
-          count: data.count,
-          realisation: data.realisation !== undefined ? new Decimal(data.realisation.toString()) : undefined,
-          buyer: data.buyer_id ? {
+          notes: data.notes,
+          buyer: data.buyerId ? {
             connect: {
-              id: data.buyer_id
+              id: data.buyerId
             }
           } : undefined,
-          shade: data.shade_id ? {
+          shade: data.shadeId ? {
             connect: {
-              id: data.shade_id
+              id: data.shadeId
             }
           } : undefined
         },
@@ -153,12 +143,12 @@ exports.updateOrder = async (id, data) => {
           buyer: true,
           shade: {
             include: {
-              raw_cotton_compositions: {
+              rawCottonCompositions: {
                 include: {
                   cotton: true
                 }
               },
-              shade_fibres: {
+              shadeFibres: {
                 include: {
                   fibre: true
                 }
@@ -169,18 +159,18 @@ exports.updateOrder = async (id, data) => {
       });
 
       // Handle raw cotton compositions if provided
-      if (data.raw_cotton_compositions && Array.isArray(data.raw_cotton_compositions)) {
+      if (data.rawCottonCompositions && Array.isArray(data.rawCottonCompositions)) {
         // Delete existing compositions
-        await prisma.raw_cotton_compositions.deleteMany({
-          where: { shade_id: order.shade.id }
+        await prisma.rawCottonComposition.deleteMany({
+          where: { shadeId: order.shade.id }
         });
 
         // Create new compositions
-        if (data.raw_cotton_compositions.length > 0) {
-          await prisma.raw_cotton_compositions.createMany({
-            data: data.raw_cotton_compositions.map(rc => ({
-              shade_id: order.shade.id,
-              cotton_id: rc.cotton_id,
+        if (data.rawCottonCompositions.length > 0) {
+          await prisma.rawCottonComposition.createMany({
+            data: data.rawCottonCompositions.map(rc => ({
+              shadeId: order.shade.id,
+              cottonId: rc.cottonId,
               percentage: new Decimal(rc.percentage.toString())
             }))
           });
@@ -209,7 +199,7 @@ exports.updateOrder = async (id, data) => {
 // 5. Update only the status
 exports.updateOrderStatus = async (id, status) => {
   try {
-    return await prisma.orders.update({
+    return await prisma.order.update({
       where: { id },
       data: { status }
     });
@@ -218,10 +208,10 @@ exports.updateOrderStatus = async (id, status) => {
   }
 };
 
-// 6. Delete order
+// 6. Delete an order
 exports.deleteOrder = async (id) => {
   try {
-    return await prisma.orders.delete({
+    return await prisma.order.delete({
       where: { id }
     });
   } catch (error) {
@@ -229,89 +219,69 @@ exports.deleteOrder = async (id) => {
   }
 };
 
-// 7. Get detailed order progress
-exports.getOrderProgressDetails = async (orderId) => {
-  const order = await prisma.orders.findUnique({
-    where: { id: orderId },
-    include: {
-      shade: {
-        include: {
-          shade_fibres: {
-            include: { fibre: true },
-          },
-          raw_cotton_compositions: true,
-        },
+// 7. Get orders by buyer ID
+exports.getOrdersByBuyerId = async (buyerId) => {
+  try {
+    return await prisma.order.findMany({
+      where: { buyerId },
+      include: {
+        buyer: true,
+        shade: {
+          include: {
+            shadeFibres: {
+              include: {
+                fibre: true
+              }
+            }
+          }
+        }
       },
-    },
-  });
+      orderBy: { createdAt: 'desc' }
+    });
+  } catch (error) {
+    throw new Error('Failed to fetch orders for buyer');
+  }
+};
 
-  if (!order) throw new Error('Order not found');
+// 8. Get orders by status
+exports.getOrdersByStatus = async (status) => {
+  try {
+    return await prisma.order.findMany({
+      where: { status },
+      include: {
+        buyer: true,
+        shade: true
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+  } catch (error) {
+    throw new Error('Failed to fetch orders by status');
+  }
+};
 
-  const logs = await prisma.productions.findMany({
-    where: { order_id: orderId },
-    orderBy: { date: 'asc' },
-  });
+// 9. Get order statistics
+exports.getOrderStatistics = async () => {
+  try {
+    const totalOrders = await prisma.order.count();
+    const pendingOrders = await prisma.order.count({
+      where: { status: 'pending' }
+    });
+    const completedOrders = await prisma.order.count({
+      where: { status: 'completed' }
+    });
+    const totalValue = await prisma.order.aggregate({
+      _sum: {
+        totalAmount: true
+      }
+    });
 
-  const requiredQty = Number(order.quantity_kg);
-  const producedQty = logs.reduce((sum, log) => sum + Number(log.production_kg), 0);
-  const balanceQty = requiredQty - producedQty;
-  const progressPercent = requiredQty > 0 ? (producedQty / requiredQty) * 100 : 0;
-
-  const timeline = logs.map((log) => ({
-    date: log.date.toISOString(),
-    machine: log.machine,
-    section: log.section,
-    shift: log.shift,
-    production_kg: Number(log.production_kg),
-    remarks: log.remarks,
-  }));
-
-  const dailyChart = timeline.map((log) => ({
-    date: log.date,
-    production_kg: log.production_kg,
-  }));
-
-  const fiberSummary = [
-    ...order.shade.shade_fibres.map((sf) => {
-      const required = requiredQty * (sf.percentage / 100);
-      return {
-        fibre_name: sf.fibre.fibre_name,
-        required_qty: required,
-        actual_consumed: 0,
-        current_stock: Number(sf.fibre.stock_kg),
-      };
-    }),
-    ...(order.shade.raw_cotton_compositions || []).map((rc) => {
-      const required = requiredQty * (rc.percentage / 100);
-      return {
-        fibre_name: 'RAW COTTON',
-        required_qty: required,
-        actual_consumed: 0,
-        current_stock: rc.stock_kg ? Number(rc.stock_kg) : 0,
-      };
-    }),
-  ];
-
-  const averageEfficiency =
-    logs.length > 0
-      ? logs.reduce((sum, l) => sum + (Number(l.required_qty) > 0 ? Number(l.production_kg) / Number(l.required_qty) : 0), 0) / logs.length * 100
-      : 0;
-
-  const topProductionDay = logs.reduce((top, l) => {
-    return l.production_kg > (top?.production_kg ?? 0) ? l : top;
-  }, null);
-
-  return {
-    kpis: { requiredQty, producedQty, balanceQty, progressPercent },
-    timeline,
-    dailyChart,
-    fiberSummary,
-    insights: {
-      averageEfficiency,
-      noProductionDays: [],
-      topProductionDay: topProductionDay
-        ? { date: topProductionDay.date.toISOString(), production: Number(topProductionDay.production_kg) }
-        : null,
-    },
-  };
+    return {
+      totalOrders,
+      pendingOrders,
+      completedOrders,
+      totalValue: totalValue._sum.totalAmount || 0
+    };
+  } catch (error) {
+    throw new Error('Failed to fetch order statistics');
+  }
 };

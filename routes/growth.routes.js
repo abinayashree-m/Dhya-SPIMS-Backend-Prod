@@ -1,7 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const growthController = require('../controllers/growth.controller');
-const { verifyToken, flexibleAuthMiddleware } = require('../middlewares/auth.middleware');
+const { verifyToken, flexibleAuthMiddleware, n8nAuthMiddleware } = require('../middlewares/auth.middleware');
+
+// Add console logs to track route access
+console.log('🚀 [GROWTH ROUTES] Growth routes file loaded');
+console.log('🚀 [GROWTH ROUTES] Controller methods available:', Object.keys(growthController));
 
 /**
  * @swagger
@@ -10,21 +14,18 @@ const { verifyToken, flexibleAuthMiddleware } = require('../middlewares/auth.mid
  *   description: Texintelli Growth Engine API endpoints
  */
 
-// Logging middleware for growth routes
+// Add middleware to log all requests to growth endpoints
 router.use((req, res, next) => {
-  console.log(`🌐 [GROWTH_ROUTES] ${req.method} ${req.path} - ${new Date().toISOString()}`);
-  console.log(`🌐 [GROWTH_ROUTES] Request details:`, {
-    method: req.method,
-    path: req.path,
-    query: req.query,
+  console.log(`🚀 [GROWTH ROUTES] === ${req.method} ${req.originalUrl} ===`);
+  console.log(`🚀 [GROWTH ROUTES] Request headers:`, {
+    'user-agent': req.headers['user-agent'],
+    'content-type': req.headers['content-type'],
+    'authorization': req.headers.authorization ? `Bearer ...${req.headers.authorization.slice(-6)}` : 'None'
+  });
+  console.log(`🚀 [GROWTH ROUTES] Request body:`, {
     hasBody: !!req.body,
     bodyKeys: req.body ? Object.keys(req.body) : [],
-    headers: {
-      'user-agent': req.headers['user-agent'],
-      'content-type': req.headers['content-type'],
-      'authorization': req.headers.authorization ? 'Bearer [HIDDEN]' : 'None',
-      'x-api-key': req.headers['x-api-key'] ? 'API_KEY [HIDDEN]' : 'None'
-    }
+    bodySize: req.body ? JSON.stringify(req.body).length : 0
   });
   next();
 });
@@ -291,5 +292,55 @@ router.get('/campaigns/:campaignId/brands', verifyToken, growthController.getDis
  *         description: Server error
  */
 router.put('/brands/:brandId/status', verifyToken, growthController.updateBrandStatus);
+
+/**
+ * @swagger
+ * /growth/campaigns/{campaignId}/brands:
+ *   post:
+ *     summary: Save discovered brands from n8n workflow (n8n only)
+ *     tags: [Growth Engine]
+ *     security:
+ *       - apiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: campaignId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Campaign ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - brands
+ *             properties:
+ *               brands:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     brandName:
+ *                       type: string
+ *                       description: Company name
+ *                     website:
+ *                       type: string
+ *                       description: Company website
+ *                     productFitAnalysis:
+ *                       type: string
+ *                       description: AI analysis of product fit
+ *     responses:
+ *       201:
+ *         description: Brands saved successfully
+ *       400:
+ *         description: Invalid request data
+ *       401:
+ *         description: Unauthorized (invalid API key)
+ *       500:
+ *         description: Server error
+ */
+router.post('/campaigns/:campaignId/brands', n8nAuthMiddleware, growthController.saveDiscoveredBrands);
 
 module.exports = router; 

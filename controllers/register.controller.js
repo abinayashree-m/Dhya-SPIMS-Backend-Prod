@@ -20,8 +20,8 @@ exports.register = async (req, res) => {
 
     res.status(201).json({
       message: 'Tenant, admin, and roles created successfully',
-      tenant_id: result.tenant_id,
-      admin_user_id: result.admin_user_id,
+      tenantId: result.tenantId,
+      adminUserId: result.adminUserId,
       roles: result.roles,
     });
   } catch (err) {

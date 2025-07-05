@@ -120,7 +120,7 @@ class AttendanceService {
       date: { gte: startOfDay, lte: endOfDay },
     };
 
-    if (employee_id) whereClause.employee_id = employee_id;
+    if (employee_id) whereClause.employeeId = employee_id;
     if (shift) whereClause.shift = shift;
     if (status) whereClause.status = status;
 
@@ -132,12 +132,12 @@ class AttendanceService {
             select: {
               name: true,
               department: true,
-              token_no: true,
-              shift_rate: true,
+              tokenNo: true,
+              shiftRate: true,
             },
           },
         },
-        orderBy: { employee_id: 'asc' },
+        orderBy: { employeeId: 'asc' },
         skip,
         take: limit,
       }),
@@ -177,9 +177,9 @@ async getAttendanceRange({ start, end, page = 1, limit = 10 }) {
       },
     },
     select: {
-      employee_id: true,
+      employeeId: true,
     },
-    distinct: ['employee_id'],
+    distinct: ['employeeId'],
   });
 
   const total = employeeIds.length;
@@ -187,7 +187,7 @@ async getAttendanceRange({ start, end, page = 1, limit = 10 }) {
 
   const paginatedIds = employeeIds
     .slice(skip, skip + limit)
-    .map((item) => item.employee_id);
+    .map((item) => item.employeeId);
 
   // Get all attendance data for selected employees within the range
   const records = await prisma.attendance.findMany({
@@ -196,7 +196,7 @@ async getAttendanceRange({ start, end, page = 1, limit = 10 }) {
         gte: startDate,
         lte: endDate,
       },
-      employee_id: {
+      employeeId: {
         in: paginatedIds,
       },
     },
@@ -206,13 +206,13 @@ async getAttendanceRange({ start, end, page = 1, limit = 10 }) {
           id: true,
           name: true,
           department: true,
-          token_no: true,
-          shift_rate: true,
+          tokenNo: true,
+          shiftRate: true,
         },
       },
     },
     orderBy: [
-      { employee_id: 'asc' },
+      { employeeId: 'asc' },
       { date: 'asc' },
     ],
   });
@@ -224,12 +224,12 @@ async getAttendanceRange({ start, end, page = 1, limit = 10 }) {
 
     if (!grouped[empId]) {
       grouped[empId] = {
-        employee_id: empId,
+        employeeId: empId,
         employee: {
           name: rec.employee.name,
           department: rec.employee.department,
-          token_no: rec.employee.token_no,
-          shift_rate: rec.employee.shift_rate,
+          tokenNo: rec.employee.tokenNo,
+          shiftRate: rec.employee.shiftRate,
         },
         attendance: {},
       };
@@ -239,10 +239,10 @@ async getAttendanceRange({ start, end, page = 1, limit = 10 }) {
 
     grouped[empId].attendance[dateKey] = {
       status: rec.status,
-      in_time: rec.in_time.toTimeString().split(':').slice(0, 2).join(':'),   // "HH:MM"
-      out_time: rec.out_time.toTimeString().split(':').slice(0, 2).join(':'),
-      total_hours: rec.total_hours,
-      overtime_hours: rec.overtime_hours,
+      inTime: rec.inTime ? rec.inTime.toTimeString().split(':').slice(0, 2).join(':') : null,   // "HH:MM"
+      outTime: rec.outTime ? rec.outTime.toTimeString().split(':').slice(0, 2).join(':') : null,
+      totalHours: rec.totalHours,
+      overtimeHours: rec.overtimeHours,
       shift: rec.shift,
     };
   }
@@ -274,8 +274,8 @@ async getAttendanceRange({ start, end, page = 1, limit = 10 }) {
               select: { 
                 name: true,
                 department: true,
-                token_no: true,
-                shift_rate: true, // This comes from employees table
+                tokenNo: true,
+                shiftRate: true, // This comes from employees table
               },
             },
           },
@@ -288,18 +288,18 @@ async getAttendanceRange({ start, end, page = 1, limit = 10 }) {
 
       // Format data for response
       const formattedData = data.map(record => ({
-        employee_id: record.employee_id,
+        employeeId: record.employeeId,
         name: record.employee?.name || '',
         department: record.employee?.department || '',
-        token_no: record.employee?.token_no || '',
-        shift_rate: record.employee?.shift_rate || 0,
+        tokenNo: record.employee?.tokenNo || '',
+        shiftRate: record.employee?.shiftRate || 0,
         date: record.date,
         shift: record.shift,
         status: record.status,
-        in_time: record.in_time,
-        out_time: record.out_time,
-        total_hours: record.total_hours,
-        overtime_hours: record.overtime_hours,
+        inTime: record.inTime,
+        outTime: record.outTime,
+        totalHours: record.totalHours,
+        overtimeHours: record.overtimeHours,
       }));
 
       return {
@@ -574,27 +574,27 @@ async getAttendanceRange({ start, end, page = 1, limit = 10 }) {
       },
     });
 
-    const totalEmployees = await prisma.employees.count();
+    const totalEmployees = await prisma.employee.count();
 
     const present = records.filter(r => r.status === 'PRESENT').length;
     const absent = records.filter(r => r.status === 'ABSENT').length;
     const totalMarked = records.length;
 
-    const totalOvertime = records.reduce((sum, r) => sum + (r.overtime_hours || 0), 0);
-    const totalHours = records.reduce((sum, r) => sum + (r.total_hours || 0), 0);
+    const totalOvertime = records.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
+    const totalHours = records.reduce((sum, r) => sum + (r.totalHours || 0), 0);
     const avgHours = totalMarked > 0 ? parseFloat((totalHours / totalMarked).toFixed(2)) : 0;
 
     return {
-      summary_type: summaryType,
+      summaryType: summaryType,
       range: {
         start: start.toISOString().split('T')[0],
         end: end.toISOString().split('T')[0],
       },
-      total_employees: totalEmployees,
+      totalEmployees: totalEmployees,
       present,
       absent,
-      total_overtime: parseFloat(totalOvertime.toFixed(2)),
-      average_shift_hours: avgHours,
+      totalOvertime: parseFloat(totalOvertime.toFixed(2)),
+      averageShiftHours: avgHours,
     };
   } catch (error) {
     console.error('Error in getAttendanceRangeSummary service:', error);
@@ -643,8 +643,8 @@ async getAttendanceRange({ start, end, page = 1, limit = 10 }) {
             select: {
               name: true,
               department: true,
-              token_no: true,
-              shift_rate: true, // This comes from employees table
+              tokenNo: true,
+              shiftRate: true, // This comes from employees table
             },
           },
         },
@@ -654,26 +654,26 @@ async getAttendanceRange({ start, end, page = 1, limit = 10 }) {
       const summaryMap = new Map();
 
       records.forEach(record => {
-        const employeeId = record.employee_id;
+        const employeeId = record.employeeId;
         
         if (!summaryMap.has(employeeId)) {
           summaryMap.set(employeeId, {
-            employee_id: employeeId,
-            employee_name: record.employee?.name || '',
+            employeeId: employeeId,
+            employeeName: record.employee?.name || '',
             department: record.employee?.department || '',
-            token_no: record.employee?.token_no || '',
-            shift_rate: record.employee?.shift_rate || 0,
+            tokenNo: record.employee?.tokenNo || '',
+            shiftRate: record.employee?.shiftRate || 0,
             workingHours: 0,
             overtimeHours: 0,
             status: record.status,
-            in_time: record.in_time,
-            out_time: record.out_time,
+            inTime: record.inTime,
+            outTime: record.outTime,
           });
         }
 
         const summary = summaryMap.get(employeeId);
-        summary.workingHours = record.total_hours || 0;
-        summary.overtimeHours = record.overtime_hours || 0;
+        summary.workingHours = record.totalHours || 0;
+        summary.overtimeHours = record.overtimeHours || 0;
       });
 
       return {
@@ -713,8 +713,8 @@ async getAttendanceRange({ start, end, page = 1, limit = 10 }) {
             select: {
               name: true,
               department: true,
-              token_no: true,
-              shift_rate: true, // This comes from employees table
+              tokenNo: true,
+              shiftRate: true, // This comes from employees table
             },
           },
         },
@@ -724,15 +724,15 @@ async getAttendanceRange({ start, end, page = 1, limit = 10 }) {
       const summaryMap = new Map();
 
       records.forEach(record => {
-        const employeeId = record.employee_id;
+        const employeeId = record.employeeId;
         
         if (!summaryMap.has(employeeId)) {
           summaryMap.set(employeeId, {
-            employee_id: employeeId,
-            employee_name: record.employee?.name || '',
+            employeeId: employeeId,
+            employeeName: record.employee?.name || '',
             department: record.employee?.department || '',
-            token_no: record.employee?.token_no || '',
-            shift_rate: record.employee?.shift_rate || 0,
+            tokenNo: record.employee?.tokenNo || '',
+            shiftRate: record.employee?.shiftRate || 0,
             workingDays: 0,
             overtimeHours: 0,
             totalHours: 0,
@@ -756,13 +756,13 @@ async getAttendanceRange({ start, end, page = 1, limit = 10 }) {
             break;
         }
 
-        summary.overtimeHours += record.overtime_hours || 0;
-        summary.totalHours += record.total_hours || 0;
+        summary.overtimeHours += record.overtimeHours || 0;
+        summary.totalHours += record.totalHours || 0;
       });
 
       return {
-        start_date: startDate.toISOString().split('T')[0],
-        end_date: endDate.toISOString().split('T')[0],
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: endDate.toISOString().split('T')[0],
         type: 'weekly',
         attendanceSummary: Array.from(summaryMap.values()),
       };

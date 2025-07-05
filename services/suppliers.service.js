@@ -4,16 +4,16 @@ const prisma = new PrismaClient();
 // Get all suppliers
 const getAllSuppliers = async () => {
   try {
-    const suppliers = await prisma.suppliers.findMany({
+    const suppliers = await prisma.supplier.findMany({
       include: {
-        fibre_requests: {
+        fibreRequests: {
           include: {
             fibre: true,
           },
         },
-        fibre_transfers: true,
+        fibreTransfers: true,
       },
-      orderBy: { created_at: 'desc' },
+      orderBy: { createdAt: 'desc' },
     });
     return suppliers;
   } catch (error) {
@@ -25,15 +25,15 @@ const getAllSuppliers = async () => {
 // Get a single supplier by ID
 const getSupplierById = async (id) => {
   try {
-    const supplier = await prisma.suppliers.findUnique({
+    const supplier = await prisma.supplier.findUnique({
       where: { id },
       include: {
-        fibre_requests: {
+        fibreRequests: {
           include: {
             fibre: true,
           },
         },
-        fibre_transfers: true,
+        fibreTransfers: true,
       },
     });
 
@@ -58,13 +58,13 @@ const createSupplier = async (data) => {
       throw new Error('Supplier name is required');
     }
 
-    const newSupplier = await prisma.suppliers.create({
+    const newSupplier = await prisma.supplier.create({
       data: {
         name,
         contact,
         email,
         address,
-        is_active: true,
+        isActive: true,
       },
     });
 
@@ -78,10 +78,10 @@ const createSupplier = async (data) => {
 // Update an existing supplier
 const updateSupplier = async (id, data) => {
   try {
-    const { name, contact, email, address, is_active } = data;
+    const { name, contact, email, address, isActive } = data;
 
     // Check if supplier exists
-    const existingSupplier = await prisma.suppliers.findUnique({
+    const existingSupplier = await prisma.supplier.findUnique({
       where: { id },
     });
 
@@ -89,15 +89,15 @@ const updateSupplier = async (id, data) => {
       throw new Error('Supplier not found');
     }
 
-    const updated = await prisma.suppliers.update({
+    const updated = await prisma.supplier.update({
       where: { id },
       data: {
         name,
         contact,
         email,
         address,
-        is_active,
-        updated_at: new Date(),
+        isActive,
+        updatedAt: new Date(),
       },
     });
 
@@ -112,11 +112,11 @@ const updateSupplier = async (id, data) => {
 const deleteSupplier = async (id) => {
   try {
     // Check if supplier exists
-    const existingSupplier = await prisma.suppliers.findUnique({
+    const existingSupplier = await prisma.supplier.findUnique({
       where: { id },
       include: {
-        fibre_requests: true,
-        fibre_transfers: true,
+        fibreRequests: true,
+        fibreTransfers: true,
       },
     });
 
@@ -125,11 +125,11 @@ const deleteSupplier = async (id) => {
     }
 
     // Check if supplier has any associated records
-    if (existingSupplier.fibre_requests.length > 0 || existingSupplier.fibre_transfers.length > 0) {
+    if (existingSupplier.fibreRequests.length > 0 || existingSupplier.fibreTransfers.length > 0) {
       throw new Error('Cannot delete supplier with associated records');
     }
 
-    await prisma.suppliers.delete({
+    await prisma.supplier.delete({
       where: { id },
     });
 

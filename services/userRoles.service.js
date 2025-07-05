@@ -2,30 +2,29 @@ const { PrismaClient, Prisma } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 exports.createRole = async (tenantId, name, permissions) => {
-  return prisma.roles.create({
+  return prisma.role.create({
     data: {
-      tenant_id: tenantId,
+      tenantId: tenantId,
       name,
-      permissions,
     },
   });
 };
 
 exports.getRolesByTenant = async (tenantId) => {
-  return prisma.roles.findMany({
-    where: { tenant_id: tenantId },
+  return prisma.role.findMany({
+    where: { tenantId: tenantId },
   });
 };
 
 exports.updateRole = async (id, data) => {
-  return prisma.roles.update({
+  return prisma.role.update({
     where: { id },
     data,
   });
 };
 
 exports.deleteRole = async (id) => {
-  return prisma.roles.delete({
+  return prisma.role.delete({
     where: { id },
   });
 };

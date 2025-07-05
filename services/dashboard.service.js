@@ -68,9 +68,9 @@ const calculatePendingFiberShortages = async (tenantId) => {
 // Helper function to calculate financial metrics
 const calculateFinancialMetrics = async (tenantId) => {
   // Get all orders with their payments
-  const orders = await prisma.orders.findMany({
+  const orders = await prisma.order.findMany({
     where: {
-      tenant_id: tenantId,
+      tenantId: tenantId,
       status: {
         in: ['completed', 'dispatched']
       }
@@ -81,9 +81,9 @@ const calculateFinancialMetrics = async (tenantId) => {
   });
 
   // Get all purchase orders with their payments
-  const purchaseOrders = await prisma.purchase_orders.findMany({
+  const purchaseOrders = await prisma.purchaseOrder.findMany({
     where: {
-      tenant_id: tenantId,
+      tenantId: tenantId,
       status: {
         in: ['verified', 'converted']
       }
@@ -104,10 +104,10 @@ const calculateFinancialMetrics = async (tenantId) => {
   };
 
   for (const order of orders) {
-    const orderValue = new Decimal(order.quantity_kg).mul(order.rate || 0);
+    const orderValue = new Decimal(order.quantity).mul(order.unitPrice || 0);
     receivables.total += Number(orderValue);
 
-    if (order.delivery_date < thirtyDaysAgo) {
+    if (order.deliveryDate < thirtyDaysAgo) {
       receivables.overdue += Number(orderValue);
     }
   }
@@ -123,7 +123,7 @@ const calculateFinancialMetrics = async (tenantId) => {
       sum + Number(new Decimal(item.quantity).mul(item.rate)), 0);
     payables.total += poValue;
 
-    if (po.po_date < thirtyDaysAgo) {
+    if (po.poDate < thirtyDaysAgo) {
       payables.overdue += poValue;
     }
   }
@@ -465,8 +465,8 @@ const calculateOrderMetrics = async (tenantId) => {
 // Helper function to calculate purchase order metrics
 const calculatePurchaseOrderMetrics = async (tenantId) => {
   // Get all purchase orders for the tenant
-  const purchaseOrders = await prisma.purchase_orders.findMany({
-    where: { tenant_id: tenantId },
+  const purchaseOrders = await prisma.purchaseOrder.findMany({
+    where: { tenantId: tenantId },
     include: {
       items: true
     }
@@ -640,8 +640,8 @@ exports.getDashboardSummary = async (user) => {
     }
 
     // Calculate purchase order metrics
-    const purchaseOrders = await prisma.purchase_orders.findMany({
-      where: { tenant_id: user.tenantId },
+    const purchaseOrders = await prisma.purchaseOrder.findMany({
+      where: { tenantId: user.tenantId },
       include: { items: true }
     });
 
@@ -653,25 +653,25 @@ exports.getDashboardSummary = async (user) => {
           acc[po.status] = (acc[po.status] || 0) + 1;
           return acc;
         }, { uploaded: 0, converted: 0, verified: 0 }),
-        totalValue: purchaseOrders.reduce((sum, po) => sum + Number(po.grand_total || 0), 0),
+        totalValue: purchaseOrders.reduce((sum, po) => sum + Number(po.grandTotal || 0), 0),
         conversionRate: (convertedPOs / purchaseOrders.length) * 100,
         convertedPOs
       };
     }
 
     // Calculate financial metrics
-    const receivables = await prisma.orders.findMany({
+    const receivables = await prisma.order.findMany({
       where: {
-        tenant_id: user.tenantId,
+        tenantId: user.tenantId,
         status: { in: ['completed', 'dispatched'] }
       }
     });
 
     if (receivables.length > 0) {
       summary.financial.receivables = {
-        total: receivables.reduce((sum, order) => sum + Number(order.quantity_kg || 0), 0),
+        total: receivables.reduce((sum, order) => sum + Number(order.quantity || 0), 0),
         overdue: receivables.filter(order => {
-          const deliveryDate = new Date(order.delivery_date);
+          const deliveryDate = new Date(order.deliveryDate);
           return order.status === 'dispatched' && deliveryDate < new Date();
         }).length
       };

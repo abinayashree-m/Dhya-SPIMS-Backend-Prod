@@ -7,427 +7,613 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model fibre_categories {
+// ============================================
+// CORE TEXTILE BUSINESS MODELS
+// ============================================
+
+model FibreCategory {
   id          String   @id @default(uuid()) @db.Uuid
   name        String   @unique
   description String?
-  created_at  DateTime @default(now())
-  updated_at  DateTime @default(now())
-  fibres      fibres[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  fibres      Fibre[]
+
+  @@map("fibre_categories")
 }
 
-model fibres {
-  id                  String                   @id @default(uuid()) @db.Uuid
-  fibre_name          String
-  fibre_code          String
-  stock_kg            Decimal                  @db.Decimal(10, 2)
-  description         String?
-  created_at          DateTime                 @default(now()) @db.Timestamp(6)
-  updated_at          DateTime                 @default(now()) @db.Timestamp(6)
-  category_id         String?                  @db.Uuid
-  closing_stock       Decimal?                 @db.Decimal(10, 2)
-  consumed_stock      Decimal?                 @db.Decimal(10, 2)
-  inward_stock        Decimal?                 @db.Decimal(10, 2)
-  outward_stock       Decimal?                 @db.Decimal(10, 2)
-  blend_fibres        blend_fibres[]
-  fiber_usage_history fiber_usage_history[]
-  restock_requests    fibre_restock_requests[]
-  fibre_transfers     fibre_transfers[]
-  fibre_usage_logs    fibre_usage_logs[]
-  category            fibre_categories?        @relation(fields: [category_id], references: [id])
-  shade_fibres        shade_fibres[]
+model Fibre {
+  id                String               @id @default(uuid()) @db.Uuid
+  fibreName         String
+  fibreCode         String
+  stockKg           Decimal              @db.Decimal(10, 2)
+  description       String?
+  createdAt         DateTime             @default(now()) @db.Timestamp(6)
+  updatedAt         DateTime             @updatedAt @db.Timestamp(6)
+  categoryId        String?              @db.Uuid
+  closingStock      Decimal?             @db.Decimal(10, 2)
+  consumedStock     Decimal?             @db.Decimal(10, 2)
+  inwardStock       Decimal?             @db.Decimal(10, 2)
+  outwardStock      Decimal?             @db.Decimal(10, 2)
+
+  // Relations
+  blendFibres       BlendFibre[]
+  fiberUsageHistory FiberUsageHistory[]
+  restockRequests   FibreRestockRequest[]
+  fibreTransfers    FibreTransfer[]
+  fibreUsageLogs    FibreUsageLog[]
+  category          FibreCategory?       @relation(fields: [categoryId], references: [id])
+  shadeFibres       ShadeFibre[]
+
+  @@map("fibres")
 }
 
-model blend_fibres {
+model BlendFibre {
   id         String @id @default(uuid()) @db.Uuid
-  blend_id   String @db.Uuid
-  fibre_id   String @db.Uuid
+  blendId    String @db.Uuid
+  fibreId    String @db.Uuid
   percentage Int
-  blends     blends @relation(fields: [blend_id], references: [id], onDelete: Cascade)
-  fibres     fibres @relation(fields: [fibre_id], references: [id], onDelete: Cascade)
 
-  @@unique([blend_id, fibre_id])
+  blend Blend @relation(fields: [blendId], references: [id], onDelete: Cascade)
+  fibre Fibre @relation(fields: [fibreId], references: [id], onDelete: Cascade)
+
+  @@unique([blendId, fibreId])
+  @@map("blend_fibres")
 }
 
-model blends {
-  id           String         @id @default(uuid()) @db.Uuid
-  blend_code   String?
-  description  String?
-  created_at   DateTime?      @default(now()) @db.Timestamp(6)
-  updated_at   DateTime?      @default(now()) @db.Timestamp(6)
-  blend_fibres blend_fibres[]
+model Blend {
+  id          String       @id @default(uuid()) @db.Uuid
+  blendCode   String?
+  description String?
+  createdAt   DateTime?    @default(now()) @db.Timestamp(6)
+  updatedAt   DateTime?    @updatedAt @db.Timestamp(6)
+  blendFibres BlendFibre[]
+
+  @@map("blends")
 }
 
-model shades {
-  id                      String                    @id @default(uuid()) @db.Uuid
-  shade_code              String
-  shade_name              String
-  created_at              DateTime?                 @default(now()) @db.Timestamp(6)
-  description             String?
-  updated_at              DateTime?                 @default(now()) @db.Timestamp(6)
-  percentage              String?
-  tenant_id               String?                   @db.Uuid
-  orders                  orders[]
-  raw_cotton_compositions raw_cotton_compositions[]
-  shade_fibres            shade_fibres[]
-  tenant                  tenants?                  @relation(fields: [tenant_id], references: [id])
+model Shade {
+  id                     String                   @id @default(uuid()) @db.Uuid
+  shadeCode              String
+  shadeName              String
+  createdAt              DateTime?                @default(now()) @db.Timestamp(6)
+  description            String?
+  updatedAt              DateTime?                @updatedAt @db.Timestamp(6)
+  percentage             String?
+  tenantId               String?                  @db.Uuid
 
-  @@index([tenant_id])
+  // Relations
+  orders                 Order[]
+  rawCottonCompositions  RawCottonComposition[]
+  shadeFibres            ShadeFibre[]
+  tenant                 Tenant?                  @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("shades")
 }
 
-model shade_fibres {
+model ShadeFibre {
   id         String  @id @default(uuid()) @db.Uuid
-  shade_id   String  @db.Uuid
-  fibre_id   String  @db.Uuid
+  shadeId    String  @db.Uuid
+  fibreId    String  @db.Uuid
   percentage Decimal @db.Decimal(5, 2)
-  fibre      fibres  @relation(fields: [fibre_id], references: [id], onDelete: Cascade)
-  shade      shades  @relation(fields: [shade_id], references: [id], onDelete: Cascade)
 
-  @@unique([shade_id, fibre_id])
+  fibre Fibre @relation(fields: [fibreId], references: [id], onDelete: Cascade)
+  shade Shade @relation(fields: [shadeId], references: [id], onDelete: Cascade)
+
+  @@unique([shadeId, fibreId])
+  @@map("shade_fibres")
 }
 
-model tenants {
+// ============================================
+// TENANT & USER MANAGEMENT
+// ============================================
+
+model Tenant {
   id             String           @id @default(uuid()) @db.Uuid
   name           String
   domain         String?
   plan           String?          @default("free")
-  is_active      Boolean?         @default(true)
-  created_at     DateTime?        @default(now()) @db.Timestamp(6)
-  updated_at     DateTime?        @default(now()) @db.Timestamp(6)
-  CompanyPersona CompanyPersona[]
-  GrowthCampaign GrowthCampaign[]
-  orders         orders[]
-  productions    productions[]
-  roles          roles[]
-  settings       settings?
-  shades         shades[]
-  subscriptions  subscriptions[]
-  users          users[]
+  isActive       Boolean?         @default(true)
+  createdAt      DateTime?        @default(now()) @db.Timestamp(6)
+  updatedAt      DateTime?        @updatedAt @db.Timestamp(6)
+
+  // Relations
+  companyPersonas CompanyPersona[]
+  growthCampaigns GrowthCampaign[]
+  orders          Order[]
+  productions     Production[]
+  roles           Role[]
+  settings        Setting?
+  shades          Shade[]
+  subscriptions   Subscription[]
+  users           User[]
+
+  @@map("tenants")
 }
 
-model subscriptions {
-  id         String    @id @default(uuid()) @db.Uuid
-  tenant_id  String?   @db.Uuid
-  plan_type  String?
-  start_date DateTime? @db.Date
-  end_date   DateTime? @db.Date
-  is_active  Boolean?  @default(true)
-  tenants    tenants?  @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+model Subscription {
+  id        String    @id @default(uuid()) @db.Uuid
+  tenantId  String?   @db.Uuid
+  planType  String?
+  startDate DateTime? @db.Date
+  endDate   DateTime? @db.Date
+  isActive  Boolean?  @default(true)
+  tenant    Tenant?   @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("subscriptions")
 }
 
-model users {
-  id            String         @id @default(uuid()) @db.Uuid
-  tenant_id     String?        @db.Uuid
-  name          String?
-  email         String         @unique
-  password_hash String
-  role          String?
-  is_active     Boolean?       @default(true)
-  created_at    DateTime?      @default(now()) @db.Timestamp(6)
-  updated_at    DateTime?      @default(now()) @db.Timestamp(6)
-  productions   productions[]
-  user_roles    user_roles[]
-  user_settings user_settings?
-  tenants       tenants?       @relation(fields: [tenant_id], references: [id])
+model User {
+  id           String       @id @default(uuid()) @db.Uuid
+  tenantId     String?      @db.Uuid
+  name         String?
+  email        String       @unique
+  passwordHash String
+  role         String?
+  isActive     Boolean?     @default(true)
+  createdAt    DateTime?    @default(now()) @db.Timestamp(6)
+  updatedAt    DateTime?    @updatedAt @db.Timestamp(6)
+
+  // Relations
+  productions  Production[]
+  userRoles    UserRole[]
+  userSettings UserSetting?
+  tenant       Tenant?      @relation(fields: [tenantId], references: [id])
+
+  @@map("users")
 }
 
-model user_settings {
-  id                  String   @id @default(uuid()) @db.Uuid
-  user_id             String   @unique @db.Uuid
-  theme               String   @default("auto")
-  locale              String   @default("en")
-  email_notifications Boolean  @default(true)
-  sms_alerts          Boolean  @default(false)
-  feature_toggles     Json?
-  created_at          DateTime @default(now())
-  updated_at          DateTime @default(now())
-  user                users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+model UserSetting {
+  id                 String   @id @default(uuid()) @db.Uuid
+  userId             String   @unique @db.Uuid
+  theme              String   @default("auto")
+  locale             String   @default("en")
+  emailNotifications Boolean  @default(true)
+  smsAlerts          Boolean  @default(false)
+  featureToggles     Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_settings")
 }
 
-model settings {
-  id                   String    @id @default(uuid()) @db.Uuid
-  tenant_id            String    @unique @db.Uuid
-  theme                String    @default("auto")
-  locale               String    @default("en")
-  email_notifications  Boolean   @default(true)
-  sms_alerts           Boolean   @default(false)
-  production_reminders Boolean   @default(true)
-  plan_type            String?
-  billing_start_date   DateTime?
-  billing_end_date     DateTime?
-  integration_ai       Boolean   @default(false)
-  integration_tally    Boolean   @default(false)
-  feature_toggles      Json?
-  created_at           DateTime  @default(now())
-  updated_at           DateTime  @default(now())
-  tenant               tenants   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+model Setting {
+  id                  String    @id @default(uuid()) @db.Uuid
+  tenantId            String    @unique @db.Uuid
+  theme               String    @default("auto")
+  locale              String    @default("en")
+  emailNotifications  Boolean   @default(true)
+  smsAlerts           Boolean   @default(false)
+  productionReminders Boolean   @default(true)
+  planType            String?
+  billingStartDate    DateTime?
+  billingEndDate      DateTime?
+  integrationAi       Boolean   @default(false)
+  integrationTally    Boolean   @default(false)
+  featureToggles      Json?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  tenant              Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("settings")
 }
 
-model roles {
-  id               String             @id @default(uuid()) @db.Uuid
-  tenant_id        String             @db.Uuid
-  name             String
-  description      String?
-  permissions      Json?
-  created_at       DateTime           @default(now())
-  updated_at       DateTime           @default(now())
-  role_permissions role_permissions[]
-  tenant           tenants            @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
-  user_roles       user_roles[]
+// ============================================
+// ROLE & PERMISSION SYSTEM (FIXED)
+// ============================================
 
-  @@unique([tenant_id, name])
+model Role {
+  id          String           @id @default(uuid()) @db.Uuid
+  tenantId    String           @db.Uuid
+  name        String
+  description String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  // Relations - REMOVED redundant permissions Json field
+  rolePermissions RolePermission[]
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userRoles       UserRole[]
+
+  @@unique([tenantId, name])
+  @@map("roles")
 }
 
-model user_roles {
-  id      String @id @default(uuid()) @db.Uuid
-  user_id String @db.Uuid
-  role_id String @db.Uuid
-  role    roles  @relation(fields: [role_id], references: [id], onDelete: Cascade)
-  user    users  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+model UserRole {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  roleId String @db.Uuid
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([user_id, role_id])
+  @@unique([userId, roleId])
+  @@map("user_roles")
 }
 
-model permissions {
-  id               String             @id @default(uuid()) @db.Uuid
-  code             String             @unique
-  description      String
-  role_permissions role_permissions[]
+model Permission {
+  id              String           @id @default(uuid()) @db.Uuid
+  code            String           @unique
+  description     String
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
 }
 
-model role_permissions {
-  id            String      @id @default(uuid()) @db.Uuid
-  role_id       String      @db.Uuid
-  permission_id String      @db.Uuid
-  permission    permissions @relation(fields: [permission_id], references: [id], onDelete: Cascade)
-  role          roles       @relation(fields: [role_id], references: [id], onDelete: Cascade)
+model RolePermission {
+  id           String     @id @default(uuid()) @db.Uuid
+  roleId       String     @db.Uuid
+  permissionId String     @db.Uuid
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
-  @@unique([role_id, permission_id])
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
 }
 
-model fiber_usage_history {
-  id       String   @id @default(uuid()) @db.Uuid
-  fibre_id String   @db.Uuid
-  date     DateTime
-  usedKg   Decimal  @db.Decimal(10, 2)
-  fibre    fibres   @relation(fields: [fibre_id], references: [id])
-}
+// ============================================
+// PRODUCTION SYSTEM (NORMALIZED)
+// ============================================
 
-model fibre_usage_logs {
-  id       String   @id @default(uuid()) @db.Uuid
-  fibre_id String   @db.Uuid
-  used_kg  Decimal  @db.Decimal(10, 2)
-  used_on  DateTime @default(now())
-  fibre    fibres   @relation(fields: [fibre_id], references: [id], onDelete: Cascade)
+model Production {
+  id        String   @id @default(uuid()) @db.Uuid
+  date      DateTime
+  tenantId  String   @db.Uuid
+  createdBy String   @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  section   String
+  total     Decimal  @default(0)
+  remarks   String?
+  orderId   String?  @db.Uuid
 
-  @@index([fibre_id])
-}
+  // Relations - REMOVED JSON fields, replaced with proper relations
+  logs    ProductionLog[]
+  creator User            @relation(fields: [createdBy], references: [id])
+  order   Order?          @relation(fields: [orderId], references: [id])
+  tenant  Tenant          @relation(fields: [tenantId], references: [id])
 
-model orders {
-  id              String            @id @default(uuid()) @db.Uuid
-  order_number    String            @unique
-  buyer_id        String            @db.Uuid
-  shade_id        String            @db.Uuid
-  delivery_date   DateTime
-  quantity_kg     Decimal           @db.Decimal(10, 2)
-  status          String            @default("pending")
-  created_at      DateTime          @default(now())
-  updated_at      DateTime          @default(now())
-  tenant_id       String            @db.Uuid
-  created_by      String
-  realisation     Decimal?          @db.Decimal(5, 2)
-  count           Int?
-  buyer           buyers            @relation(fields: [buyer_id], references: [id])
-  shade           shades            @relation(fields: [shade_id], references: [id])
-  tenant          tenants           @relation(fields: [tenant_id], references: [id])
-  productions     productions[]
-  purchase_orders purchase_orders[]
-}
-
-model productions {
-  id         String            @id @default(uuid()) @db.Uuid
-  date       DateTime
-  tenant_id  String            @db.Uuid
-  created_by String            @db.Uuid
-  created_at DateTime          @default(now())
-  updated_at DateTime          @updatedAt
-  section    String
-  blow_room  Json
-  carding    Json[]
-  drawing    Json[]
-  framing    Json[]
-  simplex    Json[]
-  spinning   Json[]
-  autoconer  Json[]
-  total      Decimal           @default(0)
-  remarks    String?
-  order_id   String?           @db.Uuid
-  logs       production_logs[]
-  creator    users             @relation(fields: [created_by], references: [id])
-  order      orders?           @relation(fields: [order_id], references: [id])
-  tenant     tenants           @relation(fields: [tenant_id], references: [id])
-
-  @@unique([date, tenant_id])
+  @@unique([date, tenantId])
   @@index([date])
-  @@index([tenant_id])
-  @@index([order_id])
+  @@index([tenantId])
+  @@index([orderId])
+  @@map("productions")
 }
 
-model buyers {
+// NEW: Normalized production data model
+model ProductionLog {
+  id           String     @id @default(uuid()) @db.Uuid
+  productionId String     @db.Uuid
+  section      String     // e.g., "BlowRoom", "Carding", "Drawing", "Framing", "Simplex", "Spinning", "Autoconer"
+  machineId    String
+  shift        String
+  operatorName String?
+  outputKg     Decimal    @db.Decimal(10, 2)
+  efficiency   Decimal?   @db.Decimal(5, 2)
+  remarks      String?
+  logDate      DateTime   @default(now())
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  production   Production @relation(fields: [productionId], references: [id], onDelete: Cascade)
+
+  @@index([productionId])
+  @@index([section])
+  @@index([logDate])
+  @@map("production_logs")
+}
+
+// ============================================
+// BUSINESS ENTITIES
+// ============================================
+
+model Buyer {
   id                String             @id @default(uuid()) @db.Uuid
   name              String
   contact           String?
   email             String?
   address           String?
-  created_at        DateTime           @default(now())
-  updated_at        DateTime           @default(now())
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
   mailingListBuyers MailingListBuyer[]
-  orders            orders[]
+  orders            Order[]
+
+  @@map("buyers")
 }
 
-model production_logs {
-  id            String      @id @default(uuid()) @db.Uuid
-  production_id String      @db.Uuid
-  log_date      DateTime    @default(now())
-  shift         String
-  machine       String
-  section       String
-  operator      String?
-  production_kg Decimal     @db.Decimal(10, 2)
-  remarks       String?
-  created_at    DateTime    @default(now())
-  updated_at    DateTime    @default(now())
-  production    productions @relation(fields: [production_id], references: [id], onDelete: Cascade)
-}
-
-model suppliers {
-  id              String                   @id @default(uuid()) @db.Uuid
+model Supplier {
+  id              String                @id @default(uuid()) @db.Uuid
   name            String
   contact         String?
   email           String?
   address         String?
-  is_active       Boolean                  @default(true)
-  created_at      DateTime                 @default(now())
-  updated_at      DateTime                 @default(now())
-  fibre_requests  fibre_restock_requests[]
-  fibre_transfers fibre_transfers[]
+  isActive        Boolean               @default(true)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  fibreRequests   FibreRestockRequest[]
+  fibreTransfers  FibreTransfer[]
+
+  @@map("suppliers")
 }
 
-model fibre_restock_requests {
-  id            String    @id @default(uuid()) @db.Uuid
-  fibre_id      String    @db.Uuid
-  supplier_id   String    @db.Uuid
-  requested_kg  Decimal   @db.Decimal(10, 2)
-  status        String    @default("requested")
-  expected_date DateTime?
+model Employee {
+  id         String       @id @default(uuid()) @db.Uuid
+  name       String
+  tokenNo    String       @unique
+  shiftRate  Decimal      @db.Decimal(10, 2)
+  aadharNo   String       @unique
+  bankAcc1   String
+  bankAcc2   String?
+  department String?
+  joinDate   DateTime?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  attendance Attendance[]
+
+  @@map("employees")
+}
+
+// ============================================
+// ORDER MANAGEMENT
+// ============================================
+
+model Order {
+  id            String          @id @default(uuid()) @db.Uuid
+  orderNumber   String          @unique
+  buyerId       String          @db.Uuid
+  shadeId       String          @db.Uuid
+  quantity      Decimal         @db.Decimal(10, 2)
+  unitPrice     Decimal         @db.Decimal(10, 2)
+  totalAmount   Decimal         @db.Decimal(12, 2)
+  orderDate     DateTime        @default(now())
+  deliveryDate  DateTime?
+  status        String          @default("pending")
   notes         String?
-  created_at    DateTime  @default(now())
-  updated_at    DateTime  @default(now())
-  fibre         fibres    @relation(fields: [fibre_id], references: [id], onDelete: Cascade)
-  supplier      suppliers @relation(fields: [supplier_id], references: [id], onDelete: Cascade)
+  tenantId      String          @db.Uuid
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
 
-  @@index([fibre_id])
-  @@index([supplier_id])
+  // Relations
+  buyer           Buyer            @relation(fields: [buyerId], references: [id])
+  shade           Shade            @relation(fields: [shadeId], references: [id])
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+  productions     Production[]
+  purchaseOrders  PurchaseOrder[]
+
+  @@map("orders")
 }
 
-model fibre_transfers {
-  id              String    @id @default(uuid()) @db.Uuid
-  fibre_id        String    @db.Uuid
-  supplier_id     String    @db.Uuid
-  sent_kg         Decimal   @db.Decimal(10, 2)
-  sent_date       DateTime
-  expected_return DateTime?
-  returned_kg     Decimal?  @db.Decimal(10, 2)
-  return_date     DateTime?
-  notes           String?
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @default(now())
-  fibre           fibres    @relation(fields: [fibre_id], references: [id], onDelete: Cascade)
-  supplier        suppliers @relation(fields: [supplier_id], references: [id], onDelete: Cascade)
+model PurchaseOrder {
+  id                   String              @id @default(uuid()) @db.Uuid
+  tenantId             String              @db.Uuid
+  poNumber             String
+  poDate               DateTime?
+  status               String              @default("uploaded")
+  linkedSalesOrderId   String?             @db.Uuid
+  buyerName            String
+  buyerContactName     String?
+  buyerContactPhone    String?
+  buyerEmail           String?
+  buyerAddress         String?
+  buyerGstNo           String?
+  buyerPanNo           String?
+  supplierName         String?
+  supplierGstNo        String?
+  paymentTerms         String?
+  styleRefNo           String?
+  deliveryAddress      String?
+  taxDetails           Json?
+  grandTotal           Decimal             @db.Decimal(12, 2)
+  amountInWords        String?
+  notes                String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  createdBy            String?
+  items                PurchaseOrderItem[]
+  salesOrder           Order?              @relation(fields: [linkedSalesOrderId], references: [id])
 
-  @@index([fibre_id])
-  @@index([supplier_id])
+  @@map("purchase_orders")
 }
 
-model raw_cotton_compositions {
+model PurchaseOrderItem {
+  id               String        @id @default(uuid()) @db.Uuid
+  purchaseOrderId  String        @db.Uuid
+  orderCode        String?
+  yarnDescription  String
+  color            String?
+  count            Int?
+  uom              String?
+  bagCount         Int?
+  quantity         Decimal       @db.Decimal(10, 2)
+  rate             Decimal       @db.Decimal(10, 2)
+  gstPercent       Decimal?      @db.Decimal(4, 2)
+  taxableAmount    Decimal       @db.Decimal(12, 2)
+  shadeNo          String?
+  purchaseOrder    PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+
+  @@map("purchase_order_items")
+}
+
+// ============================================
+// INVENTORY & LOGISTICS
+// ============================================
+
+model FibreRestockRequest {
+  id           String   @id @default(uuid()) @db.Uuid
+  fibreId      String   @db.Uuid
+  supplierId   String   @db.Uuid
+  requestedKg  Decimal  @db.Decimal(10, 2)
+  status       String   @default("requested")
+  expectedDate DateTime?
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  fibre        Fibre    @relation(fields: [fibreId], references: [id], onDelete: Cascade)
+  supplier     Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@index([fibreId])
+  @@index([supplierId])
+  @@map("fibre_restock_requests")
+}
+
+model FibreTransfer {
+  id             String    @id @default(uuid()) @db.Uuid
+  fibreId        String    @db.Uuid
+  supplierId     String    @db.Uuid
+  sentKg         Decimal   @db.Decimal(10, 2)
+  sentDate       DateTime
+  expectedReturn DateTime?
+  returnedKg     Decimal?  @db.Decimal(10, 2)
+  returnDate     DateTime?
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  fibre          Fibre     @relation(fields: [fibreId], references: [id], onDelete: Cascade)
+  supplier       Supplier  @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@index([fibreId])
+  @@index([supplierId])
+  @@map("fibre_transfers")
+}
+
+model FiberUsageHistory {
+  id        String   @id @default(uuid()) @db.Uuid
+  fibreId   String   @db.Uuid
+  usedKg    Decimal  @db.Decimal(10, 2)
+  usageDate DateTime @default(now())
+  notes     String?
+  fibre     Fibre    @relation(fields: [fibreId], references: [id], onDelete: Cascade)
+
+  @@map("fiber_usage_history")
+}
+
+model FibreUsageLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  fibreId   String   @db.Uuid
+  quantity  Decimal  @db.Decimal(10, 2)
+  operation String
+  timestamp DateTime @default(now())
+  notes     String?
+  fibre     Fibre    @relation(fields: [fibreId], references: [id], onDelete: Cascade)
+
+  @@map("fibre_usage_logs")
+}
+
+model RawCottonComposition {
   id         String   @id @default(uuid()) @db.Uuid
-  shade_id   String   @db.Uuid
-  cotton_id  String   @db.Uuid
+  shadeId    String   @db.Uuid
+  cottonId   String   @db.Uuid
   percentage Decimal  @db.Decimal(5, 2)
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-  cotton     cottons  @relation(fields: [cotton_id], references: [id])
-  shade      shades   @relation(fields: [shade_id], references: [id])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  cotton     Cotton   @relation(fields: [cottonId], references: [id])
+  shade      Shade    @relation(fields: [shadeId], references: [id])
 
-  @@unique([shade_id, cotton_id])
-  @@index([shade_id])
-  @@index([cotton_id])
+  @@unique([shadeId, cottonId])
+  @@index([shadeId])
+  @@index([cottonId])
+  @@map("raw_cotton_compositions")
 }
 
-model cottons {
-  id           String                    @id @default(uuid()) @db.Uuid
-  lot_number   String?
-  stock_kg     Decimal?                  @db.Decimal(10, 2)
+model Cotton {
+  id           String                   @id @default(uuid()) @db.Uuid
+  lotNumber    String?
+  stockKg      Decimal?                 @db.Decimal(10, 2)
   grade        String?
   source       String?
   notes        String?
-  created_at   DateTime                  @default(now())
-  updated_at   DateTime?                 @updatedAt
-  compositions raw_cotton_compositions[]
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+  compositions RawCottonComposition[]
+
+  @@map("cottons")
 }
 
-model employees {
-  name       String
-  token_no   String       @unique
-  shift_rate Decimal      @db.Decimal(10, 2)
-  aadhar_no  String       @unique
-  bank_acc_1 String
-  bank_acc_2 String?
-  department String?
-  join_date  DateTime?
-  created_at DateTime     @default(now())
-  updated_at DateTime     @default(now()) @updatedAt
-  id         String       @id @default(uuid()) @db.Uuid
-  Attendance Attendance[]
+// ============================================
+// HR & ATTENDANCE
+// ============================================
+
+model Attendance {
+  id             String           @id @default(uuid())
+  date           DateTime
+  shift          String
+  overtimeHours  Float
+  totalHours     Float
+  status         AttendanceStatus
+  employeeId     String           @db.Uuid
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  inTime         DateTime
+  lastUpdatedBy  String?          @db.Uuid
+  outTime        DateTime
+  employee       Employee         @relation(fields: [employeeId], references: [id])
+
+  @@unique([date, employeeId])
+  @@map("Attendance")
 }
+
+// ============================================
+// MARKETING & CAMPAIGNS
+// ============================================
 
 model MailingList {
   id                    String                 @id @default(uuid()) @db.Uuid
   name                  String
   createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @default(now()) @updatedAt
+  updatedAt             DateTime               @updatedAt
   mailingListBuyers     MailingListBuyer[]
   mailingListRecipients MailingListRecipient[]
+
+  @@map("MailingList")
 }
 
 model MailingListBuyer {
   id            String      @id @default(uuid())
   mailingListId String      @db.Uuid
   buyerId       String      @db.Uuid
-  buyer         buyers      @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  buyer         Buyer       @relation(fields: [buyerId], references: [id], onDelete: Cascade)
   mailingList   MailingList @relation(fields: [mailingListId], references: [id], onDelete: Cascade)
 
   @@unique([mailingListId, buyerId])
+  @@map("MailingListBuyer")
+}
+
+model MailingListRecipient {
+  id            String      @id @default(uuid()) @db.Uuid
+  mailingListId String      @db.Uuid
+  name          String
+  email         String
+  company       String
+  source        String
+  createdAt     DateTime    @default(now())
+  mailingList   MailingList @relation(fields: [mailingListId], references: [id], onDelete: Cascade)
+
+  @@index([mailingListId])
+  @@map("MailingListRecipient")
 }
 
 model EmailTemplate {
+  id        String   @id @default(uuid()) @db.Uuid
   name      String
   subject   String
   bodyHtml  String
   createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
-  id        String   @id @default(uuid()) @db.Uuid
+  updatedAt DateTime @updatedAt
+
+  @@map("EmailTemplate")
 }
 
 model Campaign {
-  tenant_id   String
+  id          String       @id @default(uuid()) @db.Uuid
+  tenantId    String
   subject     String
   bodyHtml    String
   createdAt   DateTime     @default(now())
   name        String
   recipients  String[]
-  id          String       @id @default(uuid()) @db.Uuid
   emailEvents EmailEvent[]
+
+  @@map("Campaign")
 }
 
 model EmailEvent {
@@ -444,6 +630,7 @@ model EmailEvent {
   @@index([recipient])
   @@index([eventType])
   @@index([campaignId])
+  @@map("EmailEvent")
 }
 
 model BouncedEmail {
@@ -453,115 +640,47 @@ model BouncedEmail {
   bounceMessage String?
   lastBounced   DateTime   @default(now())
   createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @default(now()) @updatedAt
+  updatedAt     DateTime   @updatedAt
 
   @@index([email])
+  @@map("BouncedEmail")
 }
 
-model Attendance {
-  id              String           @id @default(uuid())
-  date            DateTime
-  shift           String
-  overtime_hours  Float
-  total_hours     Float
-  status          AttendanceStatus
-  employee_id     String           @db.Uuid
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @default(now()) @updatedAt
-  in_time         DateTime
-  last_updated_by String?          @db.Uuid
-  out_time        DateTime
-  employee        employees        @relation(fields: [employee_id], references: [id])
-
-  @@unique([date, employee_id])
-}
-
+// FIXED: Changed from cuid() to uuid() for consistency
 model PotentialBuyer {
-  id        String   @id @default(cuid())
+  id        String   @id @default(uuid()) @db.Uuid
   company   String
   person    String
   email     String   @unique
   phone     String?
   notes     String?
   createdAt DateTime @default(now())
+
+  @@map("PotentialBuyer")
 }
 
-model MailingListRecipient {
-  id            String      @id @default(uuid()) @db.Uuid
-  mailingListId String      @db.Uuid
-  name          String
-  email         String
-  company       String
-  source        String
-  createdAt     DateTime    @default(now())
-  mailingList   MailingList @relation(fields: [mailingListId], references: [id], onDelete: Cascade)
-
-  @@index([mailingListId])
-}
-
-model purchase_orders {
-  id                    String                 @id @default(uuid()) @db.Uuid
-  tenant_id             String                 @db.Uuid
-  po_number             String
-  po_date               DateTime?
-  status                String                 @default("uploaded")
-  linked_sales_order_id String?                @db.Uuid
-  buyer_name            String
-  buyer_contact_name    String?
-  buyer_contact_phone   String?
-  buyer_email           String?
-  buyer_address         String?
-  buyer_gst_no          String?
-  buyer_pan_no          String?
-  supplier_name         String?
-  supplier_gst_no       String?
-  payment_terms         String?
-  style_ref_no          String?
-  delivery_address      String?
-  tax_details           Json?
-  grand_total           Decimal                @db.Decimal(12, 2)
-  amount_in_words       String?
-  notes                 String?
-  created_at            DateTime               @default(now())
-  updated_at            DateTime               @default(now())
-  created_by            String?
-  items                 purchase_order_items[]
-  sales_order           orders?                @relation(fields: [linked_sales_order_id], references: [id])
-}
-
-model purchase_order_items {
-  id                String          @id @default(uuid()) @db.Uuid
-  purchase_order_id String          @db.Uuid
-  order_code        String?
-  yarn_description  String
-  color             String?
-  count             Int?
-  uom               String?
-  bag_count         Int?
-  quantity          Decimal         @db.Decimal(10, 2)
-  rate              Decimal         @db.Decimal(10, 2)
-  gst_percent       Decimal?        @db.Decimal(4, 2)
-  taxable_amount    Decimal         @db.Decimal(12, 2)
-  shade_no          String?
-  purchase_order    purchase_orders @relation(fields: [purchase_order_id], references: [id], onDelete: Cascade)
-}
+// ============================================
+// GROWTH ENGINE MODELS
+// ============================================
 
 model CompanyPersona {
-  id                    String   @id @default(uuid()) @db.Uuid
-  tenant_id             String   @unique @db.Uuid
-  executiveSummary      String   @db.Text
-  targetMarketSweetSpot String   @db.Text
-  swotAnalysis          Json
-  detailedAnalysis      Json
-  isActive              Boolean  @default(true)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-  tenant                tenants  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  id                   String  @id @default(uuid()) @db.Uuid
+  tenantId             String  @unique @db.Uuid
+  executiveSummary     String  @db.Text
+  targetMarketSweetSpot String @db.Text
+  swotAnalysis         Json
+  detailedAnalysis     Json
+  isActive             Boolean @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  tenant               Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("CompanyPersona")
 }
 
 model GrowthCampaign {
   id               String            @id @default(uuid()) @db.Uuid
-  tenant_id        String            @db.Uuid
+  tenantId         String            @db.Uuid
   name             String
   keywords         String[]
   region           String?
@@ -569,12 +688,15 @@ model GrowthCampaign {
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   discoveredBrands DiscoveredBrand[]
-  tenant           tenants           @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("GrowthCampaign")
 }
 
+// CLEANED: Removed unnecessary onUpdate: NoAction
 model DiscoveredBrand {
   id                 String         @id @default(uuid()) @db.Uuid
-  campaign_id        String         @db.Uuid
+  campaignId         String         @db.Uuid
   companyName        String
   website            String?
   productFitAnalysis String
@@ -582,8 +704,14 @@ model DiscoveredBrand {
   status             BrandStatus    @default(DISCOVERED)
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
-  campaign           GrowthCampaign @relation(fields: [campaign_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  campaign           GrowthCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@map("DiscoveredBrand")
 }
+
+// ============================================
+// ENUMS
+// ============================================
 
 enum EmailEventType {
   SENT

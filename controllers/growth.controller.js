@@ -29,7 +29,7 @@ exports.getCompanyPersona = async (req, res) => {
     console.log(`🔍 [GROWTH] Fetching company persona for tenant: ${tenantId}`);
 
     const persona = await prisma.companyPersona.findUnique({
-      where: { tenant_id: tenantId },
+      where: { tenantId: tenantId },
     });
 
     if (!persona) {
@@ -358,7 +358,7 @@ exports.upsertCompanyPersona = async (req, res) => {
     console.log(`💾 [GROWTH] Upserting structured persona for tenant: ${tenantId}`);
 
     const updatedPersona = await prisma.companyPersona.upsert({
-      where: { tenant_id: tenantId },
+      where: { tenantId: tenantId },
       update: { 
         executiveSummary: executiveSummary,
         targetMarketSweetSpot: targetMarketSweetSpot,
@@ -367,7 +367,7 @@ exports.upsertCompanyPersona = async (req, res) => {
         updatedAt: new Date()
       },
       create: {
-        tenant_id: tenantId,
+        tenantId: tenantId,
         executiveSummary: executiveSummary,
         targetMarketSweetSpot: targetMarketSweetSpot,
         swotAnalysis: swotAnalysis,
@@ -378,7 +378,7 @@ exports.upsertCompanyPersona = async (req, res) => {
 
     console.log(`✅ [GROWTH] Structured persona saved successfully:`, {
       id: updatedPersona.id,
-      tenantId: updatedPersona.tenant_id,
+      tenantId: updatedPersona.tenantId,
       isActive: updatedPersona.isActive,
       createdAt: updatedPersona.createdAt,
       updatedAt: updatedPersona.updatedAt,
@@ -424,7 +424,7 @@ exports.getGrowthCampaigns = async (req, res) => {
     console.log(`🔍 [GROWTH] Fetching campaigns for tenant: ${tenantId}`);
 
     const campaigns = await prisma.growthCampaign.findMany({
-      where: { tenant_id: tenantId },
+      where: { tenantId: tenantId },
       include: {
         discoveredBrands: {
           orderBy: { createdAt: 'desc' }
@@ -466,7 +466,7 @@ exports.createGrowthCampaign = async (req, res) => {
 
     const campaign = await prisma.growthCampaign.create({
       data: {
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name,
         keywords,
         region,
@@ -510,7 +510,7 @@ exports.updateCampaignStatus = async (req, res) => {
     const campaign = await prisma.growthCampaign.update({
       where: { 
         id: campaignId,
-        tenant_id: tenantId // Ensure tenant ownership
+        tenantId: tenantId // Ensure tenant ownership
       },
       data: { 
         status,
@@ -548,9 +548,9 @@ exports.getDiscoveredBrands = async (req, res) => {
 
     const brands = await prisma.discoveredBrand.findMany({
       where: { 
-        campaign_id: campaignId,
+        campaignId: campaignId,
         campaign: {
-          tenant_id: tenantId // Ensure tenant ownership
+          tenantId: tenantId // Ensure tenant ownership
         }
       },
       orderBy: { createdAt: 'desc' }
@@ -590,7 +590,7 @@ exports.updateBrandStatus = async (req, res) => {
       where: { 
         id: brandId,
         campaign: {
-          tenant_id: tenantId // Ensure tenant ownership
+          tenantId: tenantId // Ensure tenant ownership
         }
       },
       data: { 
@@ -605,6 +605,78 @@ exports.updateBrandStatus = async (req, res) => {
     console.error('❌ [GROWTH] Error updating brand status:', error);
     res.status(500).json({ 
       error: 'Failed to update brand status',
+      details: error.message 
+    });
+  }
+};
+
+/**
+ * Save discovered brands from n8n workflow (n8n only)
+ */
+exports.saveDiscoveredBrands = async (req, res) => {
+  console.log('💾 [GROWTH] === SAVE DISCOVERED BRANDS REQUEST ===');
+  console.log(`💾 [GROWTH] Request body:`, {
+    hasBrands: !!req.body.brands,
+    brandsCount: req.body.brands?.length || 0,
+    campaignId: req.params.campaignId
+  });
+  
+  try {
+    const { campaignId } = req.params;
+    const { brands } = req.body;
+
+    console.log(`💾 [GROWTH] Saving brands for campaign: ${campaignId}`);
+
+    if (!brands || !Array.isArray(brands)) {
+      console.log('❌ [GROWTH] Invalid brands data:', { brands, type: typeof brands });
+      return res.status(400).json({ 
+        error: 'Brands array is required' 
+      });
+    }
+
+    // Verify campaign exists
+    const campaign = await prisma.growthCampaign.findUnique({
+      where: { id: campaignId }
+    });
+
+    if (!campaign) {
+      console.log(`❌ [GROWTH] Campaign not found: ${campaignId}`);
+      return res.status(404).json({ 
+        error: 'Campaign not found' 
+      });
+    }
+
+    console.log(`💾 [GROWTH] Campaign found: ${campaignId}, proceeding to save ${brands.length} brands`);
+
+    // Save brands
+    const savedBrands = await Promise.all(
+      brands.map(async (brand) => {
+        console.log(`💾 [GROWTH] Saving brand: ${brand.brandName}`);
+        return prisma.discoveredBrand.create({
+          data: {
+            campaignId: campaignId,
+            brandName: brand.brandName,
+            website: brand.website,
+            productFitAnalysis: brand.productFitAnalysis,
+            status: 'DISCOVERED'
+          }
+        });
+      })
+    );
+
+    console.log(`✅ [GROWTH] Saved ${savedBrands.length} brands for campaign: ${campaignId}`);
+    console.log('✅ [GROWTH] === SAVE DISCOVERED BRANDS SUCCESS ===');
+    
+    res.status(201).json({
+      message: `Successfully saved ${savedBrands.length} brands`,
+      brands: savedBrands
+    });
+  } catch (error) {
+    console.error('❌ [GROWTH] === SAVE DISCOVERED BRANDS ERROR ===');
+    console.error('❌ [GROWTH] Error saving discovered brands:', error);
+    console.error('❌ [GROWTH] Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to save discovered brands',
       details: error.message 
     });
   }

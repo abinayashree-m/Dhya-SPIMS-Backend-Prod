@@ -3,13 +3,18 @@ const prisma = new PrismaClient();
 
 // Assign or update a user's role
 const assignRoleToUser = async (req, res) => {
-  const { user_id, role_id } = req.body;
+  const { userId, roleId } = req.body;
 
   try {
-    const result = await prisma.user_roles.upsert({
-      where: { user_id },
-      update: { role_id },
-      create: { user_id, role_id },
+    const result = await prisma.userRole.upsert({
+      where: { 
+        userId_roleId: {
+          userId: userId,
+          roleId: roleId
+        }
+      },
+      update: {},
+      create: { userId: userId, roleId: roleId },
     });
 
     res.status(200).json(result);
@@ -24,8 +29,8 @@ const getUserRole = async (req, res) => {
   const { userId } = req.params;
 
   try {
-    const role = await prisma.user_roles.findUnique({
-      where: { user_id: userId },
+    const role = await prisma.userRole.findFirst({
+      where: { userId: userId },
       include: { role: true },
     });
 

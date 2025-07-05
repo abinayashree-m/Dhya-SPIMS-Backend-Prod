@@ -1,33 +1,29 @@
-const { Decimal } = require('@prisma/client/runtime/library');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-// ✅ Create a new shade with multiple fibre compositions
+// ✅ Create a new shade with fibres and raw cotton composition
 const createShade = async (data) => {
   try {
-    const { shade_name, shade_code, description, blend_composition, raw_cotton_compositions, ...otherData } = data;
+    const { fibres = [], rawCottonCompositions = [], ...shadeData } = data;
 
-    // Create the shade with all its relations in a single transaction
-    const shade = await prisma.shades.create({
+    // Create the shade with fibres and cotton compositions
+    const shade = await prisma.shade.create({
       data: {
-        shade_name,
-        shade_code,
-        description,
-        percentage: otherData.percentage,
-        // Create shade fibres if provided
-        shade_fibres: blend_composition ? {
-          create: blend_composition.map(fibre => ({
-            fibre_id: fibre.fibre_id,
+        ...shadeData,
+        shadeFibres: fibres.length > 0 ? {
+          create: fibres.map(fibre => ({
+            fibreId: fibre.fibreId,
             percentage: fibre.percentage
           }))
         } : undefined,
-        // Create raw cotton compositions if provided
-        raw_cotton_compositions: raw_cotton_compositions ? {
-          create: await Promise.all(raw_cotton_compositions.map(async (composition) => {
-            // Create a default cotton record if no lot number is provided
-            const cotton = await prisma.cottons.create({
-              data: {
-                lot_number: composition.lot_number || 'DEFAULT',
+        rawCottonCompositions: rawCottonCompositions.length > 0 ? {
+          create: await Promise.all(rawCottonCompositions.map(async (composition) => {
+            // Create cotton record if it doesn't exist
+            const cotton = await prisma.cotton.upsert({
+              where: { id: composition.cottonId || 'temp' },
+              update: {},
+              create: {
+                lotNumber: composition.lotNumber || 'DEFAULT',
                 grade: composition.grade || 'DEFAULT',
                 source: composition.source || 'DEFAULT',
                 notes: composition.notes || 'Default cotton record'
@@ -44,12 +40,12 @@ const createShade = async (data) => {
         } : undefined
       },
       include: {
-        shade_fibres: {
+        shadeFibres: {
           include: {
             fibre: true
           }
         },
-        raw_cotton_compositions: {
+        rawCottonCompositions: {
           include: {
             cotton: true
           }
@@ -70,7 +66,7 @@ async function updateShade(id, data) {
     const { fibres, ...updateData } = data;
 
     // Update the shade
-    const shade = await prisma.shades.update({
+    const shade = await prisma.shade.update({
       where: { id },
       data: updateData
     });
@@ -78,18 +74,18 @@ async function updateShade(id, data) {
     // Update fibres if provided
     if (fibres) {
       // Delete existing fibres
-      await prisma.shade_fibres.deleteMany({
-        where: { shade_id: id }
+      await prisma.shadeFibre.deleteMany({
+        where: { shadeId: id }
       });
 
       // Create new fibres
       if (fibres.length > 0) {
         await Promise.all(
           fibres.map(fibre =>
-            prisma.shade_fibres.create({
+            prisma.shadeFibre.create({
               data: {
-                shade_id: id,
-                fibre_id: fibre.fibre_id,
+                shadeId: id,
+                fibreId: fibre.fibreId,
                 percentage: fibre.percentage
               }
             })
@@ -107,10 +103,10 @@ async function updateShade(id, data) {
 // ✅ Get all shades
 const getAllShades = async () => {
   try {
-    const shades = await prisma.shades.findMany({
-      orderBy: { created_at: 'desc' },
+    const shades = await prisma.shade.findMany({
+      orderBy: { createdAt: 'desc' },
       include: {
-        shade_fibres: {
+        shadeFibres: {
           include: {
             fibre: {
               include: {
@@ -119,7 +115,7 @@ const getAllShades = async () => {
             }
           }
         },
-        raw_cotton_compositions: {
+        rawCottonCompositions: {
           include: {
             cotton: true
           }
@@ -130,8 +126,8 @@ const getAllShades = async () => {
     // Transform the response to include blend_composition
     return shades.map(shade => ({
       ...shade,
-      blend_composition: shade.shade_fibres.map(fibre => ({
-        fibre_id: fibre.fibre_id,
+      blendComposition: shade.shadeFibres.map(fibre => ({
+        fibreId: fibre.fibreId,
         percentage: fibre.percentage,
         fibre: fibre.fibre
       }))
@@ -145,15 +141,15 @@ const getAllShades = async () => {
 // ✅ Get shade by ID
 const getShadeById = async (id) => {
   try {
-    const shade = await prisma.shades.findUnique({
+    const shade = await prisma.shade.findUnique({
       where: { id },
       include: {
-        shade_fibres: {
+        shadeFibres: {
           include: {
             fibre: true
           }
         },
-        raw_cotton_compositions: {
+        rawCottonCompositions: {
           include: {
             cotton: true
           }
@@ -168,8 +164,8 @@ const getShadeById = async (id) => {
     // Transform the response to include blend_composition
     return {
       ...shade,
-      blend_composition: shade.shade_fibres.map(fibre => ({
-        fibre_id: fibre.fibre_id,
+      blendComposition: shade.shadeFibres.map(fibre => ({
+        fibreId: fibre.fibreId,
         percentage: fibre.percentage,
         fibre: fibre.fibre
       }))
@@ -184,17 +180,17 @@ const getShadeById = async (id) => {
 const deleteShade = async (id) => {
   try {
     // Delete associated fibres first
-    await prisma.shade_fibres.deleteMany({
-      where: { shade_id: id }
+    await prisma.shadeFibre.deleteMany({
+      where: { shadeId: id }
     });
 
     // Delete associated raw cotton compositions
-    await prisma.raw_cotton_compositions.deleteMany({
-      where: { shade_id: id }
+    await prisma.rawCottonComposition.deleteMany({
+      where: { shadeId: id }
     });
 
     // Delete the shade
-    return await prisma.shades.delete({
+    return await prisma.shade.delete({
       where: { id }
     });
   } catch (error) {
@@ -205,15 +201,13 @@ const deleteShade = async (id) => {
 
 // ✅ Optional: Shade stock summary
 const getShadeStockSummary = async () => {
-  return await prisma.shades.groupBy({
+  return await prisma.shade.groupBy({
     by: ['id'],
-    _sum: {
-      available_stock_kg: true,
+    _count: {
+      id: true,
     },
     orderBy: {
-      _sum: {
-        available_stock_kg: 'desc',
-      },
+      id: 'desc',
     },
   });
 };

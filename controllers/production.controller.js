@@ -3,15 +3,15 @@ const productionService = require('../services/production.service');
 exports.getAllProductions = async (req, res) => {
   try {
     console.log('[Production API] User object:', req.user);
-    const tenant_id = req.user?.tenantId;
-    const { order_id } = req.query;
+    const tenantId = req.user?.tenantId;
+    const { orderId } = req.query;
     
-    if (!tenant_id) {
-      console.error('[Production API] Error: No tenant_id found in user object');
+    if (!tenantId) {
+      console.error('[Production API] Error: No tenantId found in user object');
       return res.status(401).json({ error: 'Unauthorized: No tenant ID found' });
     }
 
-    const productions = await productionService.getAllProductions(tenant_id, order_id);
+    const productions = await productionService.getAllProductions(tenantId, orderId);
     res.json(productions);
   } catch (err) {
     console.error('[Production API] Error fetching productions:', err);
@@ -43,8 +43,8 @@ exports.getProductionById = async (req, res) => {
 // 📅 GET /productions/logs
 exports.getProductionLogs = async (req, res) => {
   try {
-    const tenant_id = req.user.tenant_id;
-    const logs = await productionService.getProductionLogs(tenant_id);
+    const tenantId = req.user.tenantId;
+    const logs = await productionService.getProductionLogs(tenantId);
     res.json(logs);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch production logs' });
@@ -53,8 +53,8 @@ exports.getProductionLogs = async (req, res) => {
 // 📈 GET /productions/analytics
 exports.getProductionAnalytics = async (req, res) => {
   try {
-    const tenant_id = req.user.tenant_id;
-    const data = await productionService.getProductionAnalytics(tenant_id);
+    const tenantId = req.user.tenantId;
+    const data = await productionService.getProductionAnalytics(tenantId);
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: 'Failed to compute analytics' });
@@ -63,7 +63,7 @@ exports.getProductionAnalytics = async (req, res) => {
 
 exports.getDailyEfficiency = async (req, res) => {
   try {
-    const data = await productionService.getDailyEfficiency(req.user.tenant_id);
+    const data = await productionService.getDailyEfficiency(req.user.tenantId);
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: 'Failed to calculate efficiency' });
@@ -72,7 +72,7 @@ exports.getDailyEfficiency = async (req, res) => {
 
 exports.getMachineEfficiency = async (req, res) => {
   try {
-    const data = await productionService.getMachineEfficiency(req.user.tenant_id);
+    const data = await productionService.getMachineEfficiency(req.user.tenantId);
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: 'Failed to calculate machine efficiency' });
@@ -118,10 +118,10 @@ exports.createProduction = async (req, res) => {
 exports.updateProduction = async (req, res) => {
   try {
     const { id } = req.params;
-    const tenant_id = req.user?.tenantId;
+    const tenantId = req.user?.tenantId;
 
-    if (!tenant_id) {
-      console.error('[Production API] Error: No tenant_id found in user object');
+    if (!tenantId) {
+      console.error('[Production API] Error: No tenantId found in user object');
       return res.status(401).json({ error: 'Unauthorized: No tenant ID found' });
     }
 
@@ -131,7 +131,7 @@ exports.updateProduction = async (req, res) => {
 
     console.log('[Production API] Incoming updateProduction data:', {
       id,
-      tenant_id,
+      tenantId,
       data: req.body
     });
 

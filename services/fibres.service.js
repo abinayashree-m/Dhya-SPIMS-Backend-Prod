@@ -5,17 +5,17 @@ const { Decimal } = require('@prisma/client/runtime/library');
 const prisma = new PrismaClient();
 
 /**
- * ✅ Create a new fibre (with optional category_id)
+ * ✅ Create a new fibre (with optional categoryId)
  */
 exports.createFibre = async (data) => {
-  const { fibre_name, fibre_code, stock_kg, category_id } = data;
+  const { fibreName, fibreCode, stockKg, categoryId } = data;
 
-  return await prisma.fibres.create({
+  return await prisma.fibre.create({
     data: {
-      fibre_name,
-      fibre_code,
-      stock_kg,
-      category_id,
+      fibreName,
+      fibreCode,
+      stockKg,
+      categoryId,
     },
   });
 };
@@ -24,8 +24,8 @@ exports.createFibre = async (data) => {
  * ✅ Get all fibres with category info
  */
 exports.getAllFibres = async () => {
-  return await prisma.fibres.findMany({
-    orderBy: { fibre_name: 'asc' },
+  return await prisma.fibre.findMany({
+    orderBy: { fibreName: 'asc' },
     include: {
       category: true,
     },
@@ -38,7 +38,7 @@ exports.getAllFibres = async () => {
 exports.getFibreById = async (id) => {
   if (!isUUID(id)) throw new Error(`Invalid UUID for fibre ID: ${id}`);
 
-  return await prisma.fibres.findUnique({
+  return await prisma.fibre.findUnique({
     where: { id },
     include: {
       category: true,
@@ -52,15 +52,15 @@ exports.getFibreById = async (id) => {
 exports.updateFibre = async (id, data) => {
   if (!isUUID(id)) throw new Error(`Invalid UUID for fibre ID: ${id}`);
 
-  const { fibre_name, fibre_code, stock_kg, category_id } = data;
+  const { fibreName, fibreCode, stockKg, categoryId } = data;
 
-  return await prisma.fibres.update({
+  return await prisma.fibre.update({
     where: { id },
     data: {
-      fibre_name,
-      fibre_code,
-      stock_kg,
-      category_id,
+      fibreName,
+      fibreCode,
+      stockKg,
+      categoryId,
     },
   });
 };
@@ -71,7 +71,7 @@ exports.updateFibre = async (id, data) => {
 exports.deleteFibre = async (id) => {
   if (!isUUID(id)) throw new Error(`Invalid UUID for fibre ID: ${id}`);
 
-  return await prisma.fibres.delete({
+  return await prisma.fibre.delete({
     where: { id },
   });
 };
@@ -80,7 +80,7 @@ exports.deleteFibre = async (id) => {
  * ✅ Get all fibre categories
  */
 exports.getAllFibreCategories = async () => {
-  return await prisma.fibre_categories.findMany({
+  return await prisma.fibreCategory.findMany({
     orderBy: { name: 'asc' },
   });
 };
@@ -89,7 +89,7 @@ exports.getAllFibreCategories = async () => {
  * ✅ Create a new fibre category
  */
 exports.createFibreCategory = async (data) => {
-  return await prisma.fibre_categories.create({
+  return await prisma.fibreCategory.create({
     data,
   });
 };
@@ -100,7 +100,7 @@ exports.createFibreCategory = async (data) => {
 exports.updateFibreCategory = async (id, data) => {
   if (!isUUID(id)) throw new Error(`Invalid UUID for category ID: ${id}`);
 
-  return await prisma.fibre_categories.update({
+  return await prisma.fibreCategory.update({
     where: { id },
     data,
   });
@@ -112,7 +112,7 @@ exports.updateFibreCategory = async (id, data) => {
 exports.deleteFibreCategory = async (id) => {
   if (!isUUID(id)) throw new Error(`Invalid UUID for category ID: ${id}`);
 
-  return await prisma.fibre_categories.delete({
+  return await prisma.fibreCategory.delete({
     where: { id },
   });
 };
@@ -122,9 +122,9 @@ exports.deleteFibreCategory = async (id) => {
  */
 exports.getLowStockFibres = async () => {
   try {
-    return await prisma.fibres.findMany({
+    return await prisma.fibre.findMany({
       where: {
-        stock_kg: {
+        stockKg: {
           lt: new Decimal(200),
         },
       },
@@ -132,7 +132,7 @@ exports.getLowStockFibres = async () => {
         category: true,
       },
       orderBy: {
-        stock_kg: 'asc',
+        stockKg: 'asc',
       },
     });
   } catch (error) {
@@ -147,14 +147,14 @@ exports.getLowStockFibres = async () => {
 exports.getFiberUsageTrend = async (fibreId) => {
   if (!isUUID(fibreId)) throw new Error(`Invalid UUID for fibre ID: ${fibreId}`);
 
-  return await prisma.fibre_usage_logs.groupBy({
-    by: ['used_on'],
-    where: { fibre_id: fibreId },
+  return await prisma.fibreUsageLog.groupBy({
+    by: ['timestamp'],
+    where: { fibreId: fibreId },
     _sum: {
-      used_kg: true,
+      quantity: true,
     },
     orderBy: {
-      used_on: 'desc',
+      timestamp: 'desc',
     },
   });
 };

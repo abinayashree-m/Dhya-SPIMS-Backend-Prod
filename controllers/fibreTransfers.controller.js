@@ -6,14 +6,14 @@ exports.getFibreTransfers = async (req, res) => {
   try {
     const { status } = req.query;
 
-    const transfers = await prisma.fibre_transfers.findMany({
-      where: status ? { returned_kg: null } : {}, // status not defined in schema, using returned_kg to infer pending
+    const transfers = await prisma.fibreTransfer.findMany({
+      where: status ? { returnedKg: null } : {}, // status not defined in schema, using returnedKg to infer pending
       include: {
         fibre: true,
         supplier: true,
       },
       orderBy: {
-        sent_date: 'desc',
+        sentDate: 'desc',
       },
     });
 
@@ -28,25 +28,25 @@ exports.getFibreTransfers = async (req, res) => {
 exports.createTransfer = async (req, res) => {
     try {
       const {
-        fibre_id,
-        supplier_id,
-        sent_kg,
-        sent_date = new Date().toISOString(),
-        expected_return = null,
+        fibreId,
+        supplierId,
+        sentKg,
+        sentDate = new Date().toISOString(),
+        expectedReturn = null,
         notes = '',
       } = req.body;
   
-      if (!fibre_id || !supplier_id || !sent_kg) {
+      if (!fibreId || !supplierId || !sentKg) {
         return res.status(400).json({ error: 'Missing required fields' });
       }
   
-      const created = await prisma.fibre_transfers.create({
+      const created = await prisma.fibreTransfer.create({
         data: {
-          fibre_id,
-          supplier_id,
-          sent_kg: Number(sent_kg), // ensures it's a number
-          sent_date: new Date(sent_date),
-          expected_return: expected_return ? new Date(expected_return) : null,
+          fibreId,
+          supplierId,
+          sentKg: Number(sentKg), // ensures it's a number
+          sentDate: new Date(sentDate),
+          expectedReturn: expectedReturn ? new Date(expectedReturn) : null,
           notes,
         },
       });
@@ -59,7 +59,6 @@ exports.createTransfer = async (req, res) => {
   };
 
 // PUT /fibreTransfers/:id/receive
-// PUT /fibreTransfers/:id/receive
 exports.updateReceived = async (req, res) => {
     try {
       const { id } = req.params;
@@ -67,11 +66,11 @@ exports.updateReceived = async (req, res) => {
   
       const returnDateTime = new Date(received_date).toISOString(); // ✅ Fix here
   
-      const updated = await prisma.fibre_transfers.update({
+      const updated = await prisma.fibreTransfer.update({
         where: { id },
         data: {
-          returned_kg: received_qty,
-          return_date: returnDateTime,
+          returnedKg: received_qty,
+          returnDate: returnDateTime,
           notes: remarks,
         },
       });

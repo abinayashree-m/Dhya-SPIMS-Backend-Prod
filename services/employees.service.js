@@ -4,28 +4,28 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 exports.getAllEmployees = () => {
-  return prisma.employees.findMany({ orderBy: { name: 'asc' } });
+  return prisma.employee.findMany({ orderBy: { name: 'asc' } });
 };
 
 exports.getEmployeeById = (id) => {
-  return prisma.employees.findUnique({ where: { id } });
+  return prisma.employee.findUnique({ where: { id } });
 };
 
 exports.createEmployee = (data) => {
-    return prisma.employees.create({
+    return prisma.employee.create({
       data: {
         ...data,
-        join_date: data.join_date ? new Date(data.join_date) : null, // 👈 convert string to Date
+        joinDate: data.joinDate ? new Date(data.joinDate) : null, // 👈 convert string to Date
       },
     });
   };
   
   exports.updateEmployee = (id, data) => {
-    return prisma.employees.update({
+    return prisma.employee.update({
       where: { id },
       data: {
         ...data,
-        join_date: data.join_date ? new Date(data.join_date) : null, // 👈 also fix here
+        joinDate: data.joinDate ? new Date(data.joinDate) : null, // 👈 also fix here
       },
     });
   };
@@ -33,9 +33,9 @@ exports.createEmployee = (data) => {
   exports.deleteEmployee = async (id) => {
     return await prisma.$transaction([
       prisma.attendance.deleteMany({
-        where: { employee_id: id },
+        where: { employeeId: id },
       }),
-      prisma.employees.delete({
+      prisma.employee.delete({
         where: { id },
       }),
     ]);

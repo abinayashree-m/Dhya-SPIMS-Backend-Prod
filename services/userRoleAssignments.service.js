@@ -2,16 +2,21 @@ const { PrismaClient, Prisma } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 exports.assignRole = async (userId, roleId) => {
-  return prisma.user_roles.upsert({
-    where: { user_id: userId },
-    update: { role_id: roleId },
-    create: { user_id: userId, role_id: roleId },
+  return prisma.userRole.upsert({
+    where: { 
+      userId_roleId: {
+        userId: userId,
+        roleId: roleId
+      }
+    },
+    update: {},
+    create: { userId: userId, roleId: roleId },
   });
 };
 
 exports.getUserRole = async (userId) => {
-  return prisma.user_roles.findUnique({
-    where: { user_id: userId },
+  return prisma.userRole.findFirst({
+    where: { userId: userId },
     include: { role: true },
   });
 };
