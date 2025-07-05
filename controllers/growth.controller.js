@@ -701,13 +701,22 @@ exports.saveDiscoveredBrands = async (req, res) => {
     // Save brands
     const savedBrands = await Promise.all(
       brands.map(async (brand) => {
-        console.log(`💾 [GROWTH] Saving brand: ${brand.brandName}`);
+        const companyName = brand.companyName || brand.brandName || brand.name || 'Unknown Company';
+        console.log(`💾 [GROWTH] Saving brand: ${companyName}`);
+        console.log(`💾 [GROWTH] Brand data:`, {
+          companyName,
+          website: brand.website,
+          hasProductFitAnalysis: !!brand.productFitAnalysis,
+          discoverySource: brand.discoverySource || 'n8n-brand-discovery'
+        });
+        
         return prisma.discoveredBrand.create({
           data: {
             campaignId: campaignId,
-            brandName: brand.brandName,
+            companyName: companyName,
             website: brand.website,
-            productFitAnalysis: brand.productFitAnalysis,
+            productFitAnalysis: brand.productFitAnalysis || 'No analysis provided',
+            discoverySource: brand.discoverySource || 'n8n-brand-discovery',
             status: 'DISCOVERED'
           }
         });
