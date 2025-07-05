@@ -464,13 +464,14 @@ exports.createGrowthCampaign = async (req, res) => {
 
     console.log(`🚀 [GROWTH] Creating campaign for tenant: ${tenantId}`, { name, keywords, region });
 
+    // Step 1: Create campaign with ANALYZING status
     const campaign = await prisma.growthCampaign.create({
       data: {
         tenantId: tenantId,
         name,
         keywords,
         region,
-        status: 'DRAFT'
+        status: 'ANALYZING'
       },
       include: {
         discoveredBrands: true
@@ -478,6 +479,55 @@ exports.createGrowthCampaign = async (req, res) => {
     });
 
     console.log(`✅ [GROWTH] Campaign created: ${campaign.id}`);
+
+    // Step 2: Trigger n8n Brand Discovery Workflow
+    try {
+      console.log(`🤖 [GROWTH] Triggering n8n brand discovery workflow for campaign: ${campaign.id}`);
+      
+      const n8nWebhookUrl = process.env.N8N_BRANDFINDER_WEBHOOK_URL;
+      if (!n8nWebhookUrl) {
+        console.log('⚠️ [GROWTH] N8N_BRANDFINDER_WEBHOOK_URL not configured, skipping workflow trigger');
+      } else {
+        const axios = require('axios');
+        
+        const workflowPayload = {
+          campaignId: campaign.id,
+          tenantId: tenantId,
+          name: campaign.name,
+          keywords: campaign.keywords,
+          region: campaign.region
+        };
+
+        console.log(`🤖 [GROWTH] Calling n8n webhook:`, {
+          url: n8nWebhookUrl,
+          payload: workflowPayload
+        });
+
+        const response = await axios.post(n8nWebhookUrl, workflowPayload, {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': process.env.N8N_API_KEY
+          },
+          timeout: 10000 // 10 second timeout
+        });
+
+        console.log(`✅ [GROWTH] n8n workflow triggered successfully:`, {
+          status: response.status,
+          campaignId: campaign.id
+        });
+      }
+    } catch (n8nError) {
+      console.error(`❌ [GROWTH] Error triggering n8n workflow:`, n8nError.message);
+      console.error(`❌ [GROWTH] n8n error details:`, {
+        status: n8nError.response?.status,
+        data: n8nError.response?.data,
+        url: process.env.N8N_BRANDFINDER_WEBHOOK_URL
+      });
+      
+      // Don't fail the campaign creation if n8n fails
+      // Just log the error and continue
+    }
+
     res.status(201).json(campaign);
   } catch (error) {
     console.error('❌ [GROWTH] Error creating growth campaign:', error);
