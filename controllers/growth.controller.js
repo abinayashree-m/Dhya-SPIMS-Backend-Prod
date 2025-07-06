@@ -1503,4 +1503,88 @@ exports.saveOutreachEmail = async (req, res) => {
       details: error.message 
     });
   }
+};
+
+/**
+ * 📧 GET OUTREACH EMAILS: Get saved email drafts for a contact
+ * Used by frontend to display generated email drafts.
+ * Uses JWT authentication.
+ */
+exports.getOutreachEmails = async (req, res) => {
+  console.log('📧 [GROWTH] === GET OUTREACH EMAILS REQUEST ===');
+  
+  try {
+    const { contactId } = req.params;
+    const tenantId = req.user.tenantId;
+    
+    if (!tenantId) {
+      console.log('❌ [GROWTH] Missing tenant ID in token');
+      return res.status(400).json({ error: 'Missing tenant ID' });
+    }
+
+    console.log(`📧 [GROWTH] Getting outreach emails for contact: ${contactId}, tenant: ${tenantId}`);
+
+    // First verify the contact exists and belongs to the tenant
+    const contact = await prisma.targetContact.findFirst({
+      where: { 
+        id: contactId,
+        discoveredSupplier: {
+          discoveredBrand: {
+            campaign: {
+              tenantId: tenantId
+            }
+          }
+        }
+      },
+      include: {
+        discoveredSupplier: {
+          include: {
+            discoveredBrand: {
+              include: {
+                campaign: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!contact) {
+      console.log(`❌ [GROWTH] Contact not found or unauthorized: ${contactId}`);
+      return res.status(404).json({ 
+        error: 'Contact not found',
+        message: 'Contact not found or you do not have permission to access it.'
+      });
+    }
+
+    console.log(`✅ [GROWTH] Contact found: ${contact.name} at ${contact.discoveredSupplier.companyName}`);
+
+    // Get all outreach emails for this contact
+    const outreachEmails = await prisma.outreachEmail.findMany({
+      where: {
+        targetContactId: contactId
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+
+    console.log(`✅ [GROWTH] Found ${outreachEmails.length} outreach emails for contact: ${contactId}`);
+    console.log('✅ [GROWTH] === GET OUTREACH EMAILS SUCCESS ===');
+    
+    res.status(200).json({
+      contactId: contactId,
+      contactName: contact.name,
+      supplierName: contact.discoveredSupplier.companyName,
+      outreachEmails: outreachEmails
+    });
+  } catch (error) {
+    console.error('❌ [GROWTH] === GET OUTREACH EMAILS ERROR ===');
+    console.error(`❌ [GROWTH] Error getting outreach emails for contact ${req.params.contactId}:`, error);
+    console.error('❌ [GROWTH] Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to get outreach emails',
+      details: error.message 
+    });
+  }
 }; 

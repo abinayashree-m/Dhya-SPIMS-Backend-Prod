@@ -548,6 +548,67 @@ router.post('/contacts/:contactId/generate-draft', verifyToken, growthController
 
 /**
  * @swagger
+ * /growth/contacts/{contactId}/outreach-emails:
+ *   get:
+ *     summary: Get saved outreach email drafts for a contact
+ *     tags: [Growth Engine]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: contactId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Target Contact ID
+ *     responses:
+ *       200:
+ *         description: Outreach emails retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 contactId:
+ *                   type: string
+ *                   description: Contact ID
+ *                 contactName:
+ *                   type: string
+ *                   description: Contact name
+ *                 supplierName:
+ *                   type: string
+ *                   description: Supplier company name
+ *                 outreachEmails:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                         description: Outreach email ID
+ *                       subject:
+ *                         type: string
+ *                         description: Email subject
+ *                       body:
+ *                         type: string
+ *                         description: Email body
+ *                       status:
+ *                         type: string
+ *                         enum: [DRAFT, QUEUED, SENT, FAILED, REPLIED]
+ *                         description: Email status
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *                         description: Creation timestamp
+ *       404:
+ *         description: Contact not found or unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/contacts/:contactId/outreach-emails', verifyToken, growthController.getOutreachEmails);
+
+/**
+ * @swagger
  * /growth/outreach-emails:
  *   post:
  *     summary: Save generated outreach email draft from n8n workflow (n8n only)
