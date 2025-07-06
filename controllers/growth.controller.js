@@ -1028,9 +1028,14 @@ exports.saveDiscoveredSuppliers = async (req, res) => {
       suppliersData.map(s => ({ name: s.companyName, country: s.country, specialization: s.specialization }))
     );
 
-    await prisma.discoveredSupplier.createMany({ 
-      data: suppliersData 
-    });
+    // Create suppliers and get their IDs
+    const createdSuppliers = await Promise.all(
+      suppliersData.map(async (supplierData) => {
+        return await prisma.discoveredSupplier.create({
+          data: supplierData
+        });
+      })
+    );
 
     // Update brand status to indicate suppliers have been identified
     await prisma.discoveredBrand.update({
@@ -1039,12 +1044,20 @@ exports.saveDiscoveredSuppliers = async (req, res) => {
     });
 
     console.log(`✅ [GROWTH] Successfully saved ${suppliers.length} suppliers for brand: ${brandId}`);
+    console.log(`✅ [GROWTH] Created supplier IDs:`, createdSuppliers.map(s => ({ id: s.id, name: s.companyName })));
     console.log('✅ [GROWTH] === SAVE DISCOVERED SUPPLIERS SUCCESS ===');
     
     res.status(201).json({ 
       message: `Successfully saved ${suppliers.length} suppliers`,
       brandId: brandId,
-      suppliersCount: suppliers.length
+      suppliersCount: suppliers.length,
+      suppliers: createdSuppliers.map(s => ({
+        id: s.id,
+        companyName: s.companyName,
+        country: s.country,
+        specialization: s.specialization,
+        relevanceScore: s.relevanceScore
+      }))
     });
   } catch (error) {
     console.error('❌ [GROWTH] === SAVE DISCOVERED SUPPLIERS ERROR ===');
@@ -1129,6 +1142,18 @@ exports.saveTargetContacts = async (req, res) => {
       hasApiKey: !!req.headers['x-api-key'],
       userAgent: req.headers['user-agent']
     });
+
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(supplierId)) {
+      console.log(`❌ [GROWTH] Invalid supplierId format: ${supplierId}`);
+      console.log(`❌ [GROWTH] Expected UUID format (e.g., 3bf9bed5-d468-47c5-9c19-61a7e37faedc), got: ${supplierId}`);
+      return res.status(400).json({ 
+        error: 'Invalid supplier ID format',
+        message: `Supplier ID must be in UUID format (e.g., 3bf9bed5-d468-47c5-9c19-61a7e37faedc). Received: ${supplierId}`,
+        details: 'n8n workflow should use the UUID returned from the saveDiscoveredSuppliers endpoint'
+      });
+    }
 
     if (!contacts || !Array.isArray(contacts)) {
       console.log('❌ [GROWTH] Invalid contacts data - must be an array');
