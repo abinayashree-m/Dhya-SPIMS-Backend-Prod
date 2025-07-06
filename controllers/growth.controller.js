@@ -1285,4 +1285,211 @@ exports.getTargetContacts = async (req, res) => {
       details: error.message 
     });
   }
+};
+
+/**
+ * ✉️ GENERATE OUTREACH DRAFT: Trigger email generation for a contact
+ * Triggers the n8n workflow to generate a draft email for a specific contact.
+ * Called by the frontend.
+ */
+exports.generateOutreachDraft = async (req, res) => {
+  console.log('✉️ [GROWTH] === GENERATE OUTREACH DRAFT REQUEST ===');
+  
+  try {
+    const { contactId } = req.params;
+    const tenantId = req.user?.tenantId;
+    
+    if (!tenantId) {
+      console.log('❌ [GROWTH] Missing tenant ID in token');
+      return res.status(400).json({ error: 'Missing tenant ID in token' });
+    }
+
+    console.log(`✉️ [GROWTH] Generating draft for contact: ${contactId}, tenant: ${tenantId}`);
+
+    // First verify the contact exists and belongs to the tenant
+    const contact = await prisma.targetContact.findFirst({
+      where: { 
+        id: contactId,
+        discoveredSupplier: {
+          discoveredBrand: {
+            campaign: {
+              tenantId: tenantId
+            }
+          }
+        }
+      },
+      include: {
+        discoveredSupplier: {
+          include: {
+            discoveredBrand: {
+              include: {
+                campaign: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!contact) {
+      console.log(`❌ [GROWTH] Contact not found or unauthorized: ${contactId}`);
+      return res.status(404).json({ 
+        error: 'Contact not found',
+        message: 'Contact not found or you do not have permission to access it.'
+      });
+    }
+
+    console.log(`✅ [GROWTH] Contact found: ${contact.name} at ${contact.discoveredSupplier.companyName}`);
+
+    // Trigger n8n workflow for draft generation
+    const webhookUrl = process.env.N8N_DRAFTGENERATOR_WEBHOOK_URL;
+    if (webhookUrl) {
+      console.log(`🔗 [GROWTH] Triggering n8n DraftGenerator workflow for contact: ${contactId}`);
+      
+      // Send full contact context to n8n workflow
+      axios.post(webhookUrl, {
+        contact: {
+          id: contact.id,
+          name: contact.name,
+          title: contact.title,
+          email: contact.email,
+          linkedinUrl: contact.linkedinUrl,
+          supplier: {
+            id: contact.discoveredSupplier.id,
+            companyName: contact.discoveredSupplier.companyName,
+            country: contact.discoveredSupplier.country,
+            specialization: contact.discoveredSupplier.specialization,
+          },
+          brand: {
+            id: contact.discoveredSupplier.discoveredBrand.id,
+            companyName: contact.discoveredSupplier.discoveredBrand.companyName,
+            website: contact.discoveredSupplier.discoveredBrand.website,
+          },
+          campaign: {
+            id: contact.discoveredSupplier.discoveredBrand.campaign.id,
+            name: contact.discoveredSupplier.discoveredBrand.campaign.name,
+            keywords: contact.discoveredSupplier.discoveredBrand.campaign.keywords,
+            region: contact.discoveredSupplier.discoveredBrand.campaign.region,
+          }
+        },
+        tenantId: tenantId
+      }).catch(err => {
+        console.error(`❌ [GROWTH] Failed to trigger DraftGenerator workflow for contact ${contactId}:`, err.message);
+      });
+    } else {
+      console.log('⚠️ [GROWTH] N8N_DRAFTGENERATOR_WEBHOOK_URL not configured, skipping workflow trigger');
+    }
+
+    console.log(`✅ [GROWTH] Email draft generation initiated for contact: ${contactId}`);
+    console.log('✅ [GROWTH] === GENERATE OUTREACH DRAFT SUCCESS ===');
+    
+    res.status(202).json({ 
+      message: 'Email draft generation initiated',
+      contactId: contactId,
+      contactName: contact.name,
+      supplierName: contact.discoveredSupplier.companyName
+    });
+  } catch (error) {
+    console.error('❌ [GROWTH] === GENERATE OUTREACH DRAFT ERROR ===');
+    console.error(`❌ [GROWTH] Error generating draft for contact ${req.params.contactId}:`, error);
+    console.error('❌ [GROWTH] Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to start draft generation',
+      details: error.message 
+    });
+  }
+};
+
+/**
+ * ✉️ SAVE OUTREACH EMAIL: Save generated email draft from n8n
+ * Called by n8n workflow after generating an email draft.
+ * Uses n8n authentication (API key).
+ */
+exports.saveOutreachEmail = async (req, res) => {
+  console.log('✉️ [GROWTH] === SAVE OUTREACH EMAIL REQUEST ===');
+  
+  try {
+    const { contactId, subject, body, serviceMessageId, tenantId } = req.body;
+    
+    if (!contactId || !subject || !body) {
+      console.log('❌ [GROWTH] Missing required fields in request body');
+      return res.status(400).json({ 
+        error: 'Missing required fields',
+        required: ['contactId', 'subject', 'body'],
+        received: Object.keys(req.body)
+      });
+    }
+
+    console.log(`✉️ [GROWTH] Saving email draft for contact: ${contactId}`);
+    console.log(`✉️ [GROWTH] Subject: ${subject}`);
+    console.log(`✉️ [GROWTH] Body length: ${body?.length || 0} characters`);
+
+    // First verify the contact exists and belongs to the tenant (if tenantId provided)
+    const whereClause = { id: contactId };
+    if (tenantId) {
+      whereClause.discoveredSupplier = {
+        discoveredBrand: {
+          campaign: {
+            tenantId: tenantId
+          }
+        }
+      };
+    }
+
+    const contact = await prisma.targetContact.findFirst({
+      where: whereClause,
+      include: {
+        discoveredSupplier: {
+          include: {
+            discoveredBrand: {
+              include: {
+                campaign: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!contact) {
+      console.log(`❌ [GROWTH] Contact not found: ${contactId}`);
+      return res.status(404).json({ 
+        error: 'Contact not found',
+        contactId: contactId
+      });
+    }
+
+    console.log(`✅ [GROWTH] Contact found: ${contact.name} at ${contact.discoveredSupplier.companyName}`);
+
+    // Save the outreach email draft
+    const outreachEmail = await prisma.outreachEmail.create({
+      data: {
+        subject: subject,
+        body: body,
+        serviceMessageId: serviceMessageId || null,
+        status: 'DRAFT',
+        targetContactId: contactId
+      }
+    });
+
+    console.log(`✅ [GROWTH] Email draft saved with ID: ${outreachEmail.id}`);
+    console.log('✅ [GROWTH] === SAVE OUTREACH EMAIL SUCCESS ===');
+    
+    res.status(201).json({ 
+      message: 'Email draft saved successfully',
+      outreachEmailId: outreachEmail.id,
+      contactId: contactId,
+      contactName: contact.name,
+      supplierName: contact.discoveredSupplier.companyName,
+      subject: subject
+    });
+  } catch (error) {
+    console.error('❌ [GROWTH] === SAVE OUTREACH EMAIL ERROR ===');
+    console.error('❌ [GROWTH] Error saving outreach email:', error);
+    console.error('❌ [GROWTH] Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to save outreach email',
+      details: error.message 
+    });
+  }
 }; 

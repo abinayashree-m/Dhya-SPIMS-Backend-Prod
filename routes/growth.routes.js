@@ -515,6 +515,85 @@ router.post('/brands/:brandId/suppliers', n8nAuthMiddleware, growthController.sa
 router.get('/suppliers/:supplierId/contacts', verifyToken, growthController.getTargetContacts);
 router.post('/suppliers/:supplierId/contacts', n8nAuthMiddleware, growthController.saveTargetContacts);
 
+// --- OUTREACH ROUTES ---
+
+/**
+ * @swagger
+ * /growth/contacts/{contactId}/generate-draft:
+ *   post:
+ *     summary: Generate outreach email draft for a contact
+ *     tags: [Growth Engine]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: contactId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Target Contact ID
+ *     responses:
+ *       202:
+ *         description: Email draft generation initiated
+ *       400:
+ *         description: Invalid request data
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Contact not found
+ *       500:
+ *         description: Server error
+ */
+router.post('/contacts/:contactId/generate-draft', verifyToken, growthController.generateOutreachDraft);
+
+/**
+ * @swagger
+ * /growth/outreach-emails:
+ *   post:
+ *     summary: Save generated outreach email draft from n8n workflow (n8n only)
+ *     tags: [Growth Engine]
+ *     security:
+ *       - apiKeyAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - contactId
+ *               - subject
+ *               - body
+ *             properties:
+ *               contactId:
+ *                 type: string
+ *                 description: Target Contact ID
+ *               subject:
+ *                 type: string
+ *                 description: Email subject line
+ *               body:
+ *                 type: string
+ *                 description: Email body content
+ *               serviceMessageId:
+ *                 type: string
+ *                 description: Optional service message ID for tracking
+ *               tenantId:
+ *                 type: string
+ *                 description: Tenant ID for validation
+ *     responses:
+ *       201:
+ *         description: Email draft saved successfully
+ *       400:
+ *         description: Invalid request data
+ *       401:
+ *         description: Unauthorized (invalid API key)
+ *       404:
+ *         description: Contact not found
+ *       500:
+ *         description: Server error
+ */
+router.post('/outreach-emails', n8nAuthMiddleware, growthController.saveOutreachEmail);
+
 /**
  * @swagger
  * /growth/campaigns/{campaignId}/brands:

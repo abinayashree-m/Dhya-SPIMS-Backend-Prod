@@ -736,12 +736,30 @@ model TargetContact {
   source               String?            @default("n8n-apollo-enrichment")
   discoveredSupplierId String             @db.Uuid
   discoveredSupplier   DiscoveredSupplier @relation(fields: [discoveredSupplierId], references: [id], onDelete: Cascade)
+  outreachEmails       OutreachEmail[]    // New relation for outreach emails
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
 
   @@index([discoveredSupplierId])
   @@index([email])
   @@map("TargetContact")
+}
+
+model OutreachEmail {
+  id               String         @id @default(uuid()) @db.Uuid
+  status           OutreachStatus @default(DRAFT)
+  subject          String
+  body             String         @db.Text
+  serviceMessageId String?        // The ID from your email provider (e.g., Resend)
+  sentAt           DateTime?
+  targetContactId  String         @db.Uuid
+  targetContact    TargetContact  @relation(fields: [targetContactId], references: [id], onDelete: Cascade)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([targetContactId])
+  @@index([status])
+  @@map("OutreachEmail")
 }
 
 // ============================================
@@ -788,4 +806,12 @@ enum BrandStatus {
   RESPONDED
   QUALIFIED
   CONVERTED
+}
+
+enum OutreachStatus {
+  DRAFT
+  QUEUED
+  SENT
+  FAILED
+  REPLIED
 }
