@@ -850,7 +850,15 @@ exports.getCampaignDetails = async (req, res) => {
       },
       include: {
         discoveredBrands: {
-          orderBy: { createdAt: 'asc' }
+          orderBy: { createdAt: 'asc' },
+          include: {
+            discoveredSuppliers: {
+              orderBy: [
+                { relevanceScore: 'desc' },
+                { createdAt: 'desc' }
+              ]
+            }
+          }
         }
       }
     });
