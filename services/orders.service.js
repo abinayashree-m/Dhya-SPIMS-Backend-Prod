@@ -224,10 +224,10 @@ exports.getOrdersByBuyerId = async (buyerId) => {
   try {
     return await prisma.order.findMany({
       where: { buyerId },
-      include: {
+    include: {
         buyer: true,
-        shade: {
-          include: {
+      shade: {
+        include: {
             shadeFibres: {
               include: {
                 fibre: true
@@ -275,7 +275,7 @@ exports.getOrderStatistics = async () => {
       }
     });
 
-    return {
+      return {
       totalOrders,
       pendingOrders,
       completedOrders,

@@ -8,11 +8,11 @@ const getAllUsers = async (req, res) => {
       where: {
         tenantId: req.user.tenantId
       },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true, // legacy role field
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true, // legacy role field
         isActive: true,
         createdAt: true,
         userRoles: {
@@ -25,9 +25,9 @@ const getAllUsers = async (req, res) => {
               }
             }
           }
-        }
       }
-    });
+    }
+  });
     
     // Transform the response to include role information in a consistent format
     const transformedUsers = users.map(user => ({

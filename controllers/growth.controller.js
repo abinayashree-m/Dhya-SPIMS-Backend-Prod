@@ -1420,6 +1420,17 @@ exports.saveOutreachEmail = async (req, res) => {
       });
     }
 
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(contactId)) {
+      console.log(`❌ [GROWTH] Invalid UUID format for contactId: ${contactId}`);
+      return res.status(400).json({ 
+        error: 'Invalid contactId format',
+        message: 'contactId must be a valid UUID (e.g., 550e8400-e29b-41d4-a716-446655440000)',
+        received: contactId
+      });
+    }
+
     console.log(`✉️ [GROWTH] Saving email draft for contact: ${contactId}`);
     console.log(`✉️ [GROWTH] Subject: ${subject}`);
     console.log(`✉️ [GROWTH] Body length: ${body?.length || 0} characters`);
