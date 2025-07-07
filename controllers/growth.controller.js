@@ -4424,11 +4424,12 @@ exports.sendAIReply = async (req, res) => {
       responseData: n8nResponse.data
     });
 
-    // Mark the task as completed
+    // Mark the task as completed and lower priority
     await prisma.followUpTask.update({
       where: { id: taskId },
       data: { 
         status: 'DONE',
+        priority: 'LOW', // Lower priority since task is completed
         completedAt: new Date(),
         notes: task.notes + `\n\n--- AI REPLY SENT ---\nSent at: ${new Date().toISOString()}\nEmail ID: ${emailId}`,
         updatedAt: new Date()
