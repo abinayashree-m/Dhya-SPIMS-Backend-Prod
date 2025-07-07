@@ -2898,26 +2898,31 @@ exports.findContactByEmail = async (req, res) => {
       hasTenantId: !!tenantId
     });
 
-    if (!email || !tenantId) {
-      console.log('❌ [GROWTH] Missing required parameters');
+    if (!email) {
+      console.log('❌ [GROWTH] Missing required parameter: email');
       return res.status(400).json({ 
-        error: 'Missing required parameters',
-        message: 'email and tenantId query parameters are required.' 
+        error: 'Missing required parameter',
+        message: 'email query parameter is required.' 
       });
     }
 
-    // Find the contact in our database
-    const contact = await prisma.targetContact.findFirst({
-      where: {
-        email: email,
-        discoveredSupplier: {
-          discoveredBrand: {
-            campaign: {
-              tenantId: tenantId
-            }
+    // If tenantId is provided, use it for filtering. Otherwise, find contact across all tenants
+    const whereCondition = tenantId ? {
+      email: email,
+      discoveredSupplier: {
+        discoveredBrand: {
+          campaign: {
+            tenantId: tenantId
           }
         }
-      },
+      }
+    } : {
+      email: email
+    };
+
+    // Find the contact in our database
+    const contact = await prisma.targetContact.findFirst({
+      where: whereCondition,
       include: {
         discoveredSupplier: {
           include: {
@@ -2931,12 +2936,15 @@ exports.findContactByEmail = async (req, res) => {
       }
     });
 
+    const foundTenantId = contact?.discoveredSupplier?.discoveredBrand?.campaign?.tenantId;
+    
     console.log('🔍 [GROWTH] Contact search result:', {
       found: !!contact,
       contactId: contact?.id,
       contactName: contact?.name,
       companyName: contact?.discoveredSupplier?.companyName,
-      campaignName: contact?.discoveredSupplier?.discoveredBrand?.campaign?.name
+      campaignName: contact?.discoveredSupplier?.discoveredBrand?.campaign?.name,
+      foundTenantId: foundTenantId
     });
 
     if (!contact) {
@@ -2944,13 +2952,14 @@ exports.findContactByEmail = async (req, res) => {
       return res.status(404).json({ 
         message: 'Contact not found',
         email: email,
-        tenantId: tenantId
+        searchedWithTenantId: tenantId || 'none (searched all tenants)'
       });
     }
 
-    // Return contact details
+    // Return contact details with tenantId from the relationship chain
     const responseData = {
       message: 'Contact found successfully',
+      tenantId: foundTenantId, // Include tenantId at top level for easy access
       contact: {
         id: contact.id,
         name: contact.name,
@@ -2971,7 +2980,8 @@ exports.findContactByEmail = async (req, res) => {
         campaign: {
           id: contact.discoveredSupplier.discoveredBrand.campaign.id,
           name: contact.discoveredSupplier.discoveredBrand.campaign.name,
-          keywords: contact.discoveredSupplier.discoveredBrand.campaign.keywords
+          keywords: contact.discoveredSupplier.discoveredBrand.campaign.keywords,
+          tenantId: foundTenantId
         }
       }
     };

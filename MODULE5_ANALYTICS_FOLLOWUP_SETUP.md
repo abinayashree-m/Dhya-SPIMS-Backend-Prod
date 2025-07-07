@@ -13,42 +13,16 @@ Module 5 implements an automated reply detection and follow-up task creation sys
 
 ### New API Endpoints
 
-#### 1. Find Tenant by User Email (Dynamic Tenant Lookup)
-**Endpoint:** `GET /api/growth/tenants/find-by-user-email?email={userEmail}`
+#### 1. Find Contact by Email (Smart Contact & Tenant Lookup)
+**Endpoint:** `GET /api/growth/contacts/find-by-email?email={email}`
 
-**Purpose:** Dynamically find tenantId based on user's email address
-
-**Authentication:** API Key (for n8n automation)
-
-**Request:**
-```bash
-GET /api/growth/tenants/find-by-user-email?email=dharsan@dhya.com
-Headers: x-api-key: your-api-key
-```
-
-**Response (200):**
-```json
-{
-  "message": "Tenant found successfully",
-  "tenantId": "3bf9bed5-d468-47c5-9c19-61a7e37faedc",
-  "user": {
-    "id": "user-uuid",
-    "name": "Dharsan Kumar",
-    "email": "dharsan@dhya.com"
-  }
-}
-```
-
-#### 2. Find Contact by Email (Contact Lookup)
-**Endpoint:** `GET /api/growth/contacts/find-by-email?email={email}&tenantId={tenantId}`
-
-**Purpose:** Find a contact by email address for n8n workflows
+**Purpose:** Find a contact by email address and automatically determine tenant context
 
 **Authentication:** API Key (for n8n automation)
 
 **Request:**
 ```bash
-GET /api/growth/contacts/find-by-email?email=prospect@company.com&tenantId=3bf9bed5-d468-47c5-9c19-61a7e37faedc
+GET /api/growth/contacts/find-by-email?email=prospect@company.com
 Headers: x-api-key: your-api-key
 ```
 
@@ -56,6 +30,7 @@ Headers: x-api-key: your-api-key
 ```json
 {
   "message": "Contact found successfully",
+  "tenantId": "3bf9bed5-d468-47c5-9c19-61a7e37faedc",
   "contact": {
     "id": "contact-uuid",
     "name": "John Smith",
@@ -68,13 +43,23 @@ Headers: x-api-key: your-api-key
     },
     "campaign": {
       "id": "campaign-uuid",
-      "name": "Q4 Outreach Campaign"
+      "name": "Q4 Outreach Campaign",
+      "tenantId": "3bf9bed5-d468-47c5-9c19-61a7e37faedc"
     }
   }
 }
 ```
 
-#### 3. Create Task from Reply (Main Endpoint)
+**Response (404):**
+```json
+{
+  "message": "Contact not found",
+  "email": "unknown@example.com",
+  "searchedWithTenantId": "none (searched all tenants)"
+}
+```
+
+#### 2. Create Task from Reply (Main Endpoint)
 **Endpoint:** `POST /api/growth/tasks/create-from-reply`
 
 **Purpose:** Creates a follow-up task when a reply is detected by n8n
@@ -167,27 +152,17 @@ $input.item.json.cleanedSenderEmail = cleanedEmail;
 return $input.item;
 ```
 
-#### 3. HTTP Request Node (Fetch Tenant ID)
-*Dynamically finds tenant ID based on your inbox email*
+#### 3. HTTP Request Node (Smart Contact & Tenant Lookup)
+*Finds the contact and automatically determines tenant context*
 
-- **Name:** Fetch Tenant ID
+- **Name:** Find Contact & Tenant
 - **Method:** GET
-- **URL Expression:** `https://dhya-spims-backend-prod.onrender.com/api/growth/tenants/find-by-user-email?email={{ $json.to[0].address }}`
+- **URL Expression:** `https://dhya-spims-backend-prod.onrender.com/api/growth/contacts/find-by-email?email={{ $nodes["Clean Sender Email"].json.cleanedSenderEmail }}`
 - **Authentication:** Header Auth
 - **Header Name:** `x-api-key`
 - **Header Value:** `{{ $vars.API_KEY }}`
 
-#### 4. HTTP Request Node (Check if Sender is Prospect)
-*Verifies if the sender is a tracked contact*
-
-- **Name:** Check if Sender is Prospect
-- **Method:** GET
-- **URL Expression:** `https://dhya-spims-backend-prod.onrender.com/api/growth/contacts/find-by-email?email={{ $nodes["Clean Sender Email"].json.cleanedSenderEmail }}&tenantId={{ $nodes["Fetch Tenant ID"].json.tenantId }}`
-- **Authentication:** Header Auth
-- **Header Name:** `x-api-key`
-- **Header Value:** `{{ $vars.API_KEY }}`
-
-#### 5. HTTP Request Node (Create Follow-Up Task)
+#### 4. HTTP Request Node (Create Follow-Up Task)
 *Creates the high-priority follow-up task*
 
 - **Name:** Create Follow-Up Task
@@ -202,17 +177,18 @@ return $input.item;
 {
   "senderEmail": "{{ $nodes["Clean Sender Email"].json.cleanedSenderEmail }}",
   "subject": "{{ $json.subject }}",
-  "tenantId": "{{ $nodes["Fetch Tenant ID"].json.tenantId }}"
+  "tenantId": "{{ $nodes["Find Contact & Tenant"].json.tenantId }}"
 }
 ```
 
 ### Workflow Flow
 ```
-Gmail Trigger → Clean Sender Email → Fetch Tenant ID → Check if Sender is Prospect → Create Follow-Up Task
+Gmail Trigger → Clean Sender Email → Find Contact & Tenant → Create Follow-Up Task
 ```
 
 ### Key Improvements
-- ✅ **No Hardcoded Values:** Tenant ID is dynamically fetched
+- ✅ **Simplified Architecture:** Only 4 nodes instead of 5
+- ✅ **Smart Tenant Detection:** Automatic tenant lookup from contact relationships
 - ✅ **Robust Email Cleaning:** Handles formatted email addresses reliably
 - ✅ **Contact Verification:** Ensures sender is a tracked prospect
 - ✅ **Error Handling:** Graceful handling of unknown contacts
@@ -339,71 +315,4 @@ The follow-up tasks integrate with the existing analytics system:
 - `POST /api/growth/tasks/create-from-reply` - Reply processing
 - `GET /api/growth/contacts/find-by-email` - Contact lookup
 - `POST /api/growth/campaigns/{id}/brands` - Save discovered brands
-- `POST /api/growth/brands/{id}/suppliers` - Save discovered suppliers
-- `POST /api/growth/suppliers/{id}/contacts` - Save target contacts
-- `POST /api/growth/outreach-emails` - Save email drafts
-- `GET /api/growth/outreach-emails/{id}` - Get email for sending
-- `POST /api/growth/outreach-emails/{id}/sent` - Mark as sent
-- `POST /api/growth/events/email` - Process email events
-
-**👤 Frontend User Endpoints (JWT Auth):**
-- `POST /api/growth/campaigns` - Create campaigns
-- `GET /api/growth/campaigns` - List campaigns
-- `POST /api/growth/contacts/{id}/generate-draft` - Generate drafts
-- `POST /api/growth/outreach-emails/{id}/send` - Send emails
-- `GET /api/growth/analytics/*` - Analytics data
-
-### Why This Matters
-
-**❌ The Problem:**
-n8n workflows are automated and don't have user sessions, so they can't use JWT tokens (Bearer tokens) designed for user authentication.
-
-**✅ The Solution:**
-Use API key authentication (`x-api-key` header) for machine-to-machine communication with n8n workflows.
-
-**🔧 Implementation:**
-- **n8n endpoints:** Use `n8nAuthMiddleware` 
-- **Frontend endpoints:** Use `verifyToken` (JWT middleware)
-- **Mixed endpoints:** Use `flexibleAuthMiddleware` (supports both)
-
-### API Key Setup
-
-1. **Environment Variable:** Set `API_KEY` in your backend environment
-2. **n8n Configuration:** Add `x-api-key` header to all HTTP requests
-3. **Tenant ID:** Include `tenantId` in request body for n8n endpoints
-
-### Data Privacy
-- **Contact Filtering:** Only tracked contacts processed
-- **Secure Transmission:** HTTPS for all API calls
-- **Access Control:** Role-based task access
-- **Tenant Isolation:** Tasks only created for correct tenant
-- **Input Validation:** Comprehensive request validation
-
-## 📋 Next Steps
-
-1. **Deploy Backend Changes:** Restart server to load new endpoint
-2. **Create n8n Workflow:** Set up ReplyProcessor workflow
-3. **Test Integration:** Send test emails and verify task creation
-4. **Monitor Performance:** Track reply rates and response times
-5. **Optimize Filters:** Refine contact matching as needed
-
-## 🎯 Success Metrics
-
-### Key Performance Indicators
-- **Reply Detection Rate:** 95%+ of replies correctly identified
-- **Task Creation Speed:** < 30 seconds from reply to task
-- **False Positive Rate:** < 5% of tasks from non-relevant emails
-- **Follow-up Completion:** 80%+ of reply tasks completed
-
-### Monitoring Dashboard
-Track these metrics in the Growth Engine analytics:
-- Daily reply volume
-- Average response time
-- Task completion rates
-- Campaign reply rates
-
----
-
-**Module 5 Status:** ✅ Backend Complete | ⏳ n8n Workflow Pending | 🔄 Ready for Testing
-
-The Analytics & Follow-Up Flow is now fully implemented on the backend and ready for n8n workflow integration. This completes the automated reply detection and task creation system for the Texintelli Growth Engine. 
+- `
