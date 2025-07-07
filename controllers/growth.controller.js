@@ -2803,6 +2803,84 @@ exports.getAnalyticsDashboard = async (req, res) => {
 };
 
 /**
+ * 🏢 FIND TENANT BY USER EMAIL: Find tenantId based on user's email address for n8n workflows
+ * Called by n8n workflows to dynamically determine tenant context.
+ * Uses API key authentication.
+ */
+exports.findTenantByUserEmail = async (req, res) => {
+  console.log('🏢 [GROWTH] === FIND TENANT BY USER EMAIL REQUEST ===');
+  
+  try {
+    const { email } = req.query;
+    
+    console.log('🏢 [GROWTH] Tenant lookup request:', {
+      email: email,
+      hasEmail: !!email
+    });
+
+    if (!email) {
+      console.log('❌ [GROWTH] Missing email parameter');
+      return res.status(400).json({ 
+        error: 'Missing email parameter',
+        message: 'Email query parameter is required.' 
+      });
+    }
+
+    // Find user by email and get their tenant ID
+    const user = await prisma.users.findUnique({
+      where: { email: email },
+      select: { 
+        tenantId: true,
+        id: true,
+        name: true,
+        email: true
+      }
+    });
+
+    console.log('🏢 [GROWTH] User lookup result:', {
+      found: !!user,
+      userId: user?.id,
+      userName: user?.name,
+      userEmail: user?.email,
+      tenantId: user?.tenantId
+    });
+
+    if (!user || !user.tenantId) {
+      console.log('🏢 [GROWTH] No tenant found for user email');
+      return res.status(404).json({ 
+        message: 'No tenant found for this user email.',
+        email: email
+      });
+    }
+
+    const responseData = {
+      message: 'Tenant found successfully',
+      tenantId: user.tenantId,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email
+      }
+    };
+
+    console.log('✅ [GROWTH] Tenant found and returned successfully');
+    console.log('✅ [GROWTH] === FIND TENANT BY USER EMAIL SUCCESS ===');
+    
+    res.status(200).json(responseData);
+
+  } catch (error) {
+    console.error('❌ [GROWTH] === FIND TENANT BY USER EMAIL ERROR ===');
+    console.error('❌ [GROWTH] Error finding tenant by user email:', error);
+    console.error('❌ [GROWTH] Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to find tenant',
+      message: 'Internal server error while searching for tenant.',
+      details: error.message 
+    });
+  }
+};
+
+/**
  * 🔍 FIND CONTACT BY EMAIL: Find a contact by email address for n8n workflows
  * Called by n8n workflows to look up contacts before processing.
  * Uses API key authentication.
@@ -2811,8 +2889,7 @@ exports.findContactByEmail = async (req, res) => {
   console.log('🔍 [GROWTH] === FIND CONTACT BY EMAIL REQUEST ===');
   
   try {
-    const { email } = req.query;
-    const { tenantId } = req.body;
+    const { email, tenantId } = req.query;
     
     console.log('🔍 [GROWTH] Contact search request:', {
       email: email,
@@ -2825,7 +2902,7 @@ exports.findContactByEmail = async (req, res) => {
       console.log('❌ [GROWTH] Missing required parameters');
       return res.status(400).json({ 
         error: 'Missing required parameters',
-        message: 'email (query parameter) and tenantId (body) are required.' 
+        message: 'email and tenantId query parameters are required.' 
       });
     }
 

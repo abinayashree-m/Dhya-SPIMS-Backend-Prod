@@ -894,6 +894,60 @@ router.post('/outreach-emails/:emailId/send', verifyToken, growthController.trig
 
 /**
  * @swagger
+ * /growth/tenants/find-by-user-email:
+ *   get:
+ *     summary: Find tenantId based on user's email address for n8n workflows
+ *     tags: [Growth Engine]
+ *     security:
+ *       - apiKeyAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: email
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: email
+ *         description: User email address to find tenant for
+ *     responses:
+ *       200:
+ *         description: Tenant found successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   description: Success message
+ *                 tenantId:
+ *                   type: string
+ *                   format: uuid
+ *                   description: Tenant ID for the organization
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       description: User ID
+ *                     name:
+ *                       type: string
+ *                       description: User name
+ *                     email:
+ *                       type: string
+ *                       description: User email
+ *       404:
+ *         description: No tenant found for this user email
+ *       400:
+ *         description: Missing email parameter
+ *       401:
+ *         description: Unauthorized - invalid API key
+ *       500:
+ *         description: Server error
+ */
+router.get('/tenants/find-by-user-email', n8nAuthMiddleware, growthController.findTenantByUserEmail);
+
+/**
+ * @swagger
  * /growth/contacts/find-by-email:
  *   get:
  *     summary: Find a contact by email address for n8n workflows
@@ -908,19 +962,13 @@ router.post('/outreach-emails/:emailId/send', verifyToken, growthController.trig
  *           type: string
  *           format: email
  *         description: Email address to search for
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - tenantId
- *             properties:
- *               tenantId:
- *                 type: string
- *                 format: uuid
- *                 description: Tenant ID for the organization
+ *       - in: query
+ *         name: tenantId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Tenant ID for the organization
  *     responses:
  *       200:
  *         description: Contact found successfully

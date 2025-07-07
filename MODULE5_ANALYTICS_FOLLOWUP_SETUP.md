@@ -13,8 +13,34 @@ Module 5 implements an automated reply detection and follow-up task creation sys
 
 ### New API Endpoints
 
-#### 1. Find Contact by Email (n8n Helper)
-**Endpoint:** `GET /api/growth/contacts/find-by-email?email={email}`
+#### 1. Find Tenant by User Email (Dynamic Tenant Lookup)
+**Endpoint:** `GET /api/growth/tenants/find-by-user-email?email={userEmail}`
+
+**Purpose:** Dynamically find tenantId based on user's email address
+
+**Authentication:** API Key (for n8n automation)
+
+**Request:**
+```bash
+GET /api/growth/tenants/find-by-user-email?email=dharsan@dhya.com
+Headers: x-api-key: your-api-key
+```
+
+**Response (200):**
+```json
+{
+  "message": "Tenant found successfully",
+  "tenantId": "3bf9bed5-d468-47c5-9c19-61a7e37faedc",
+  "user": {
+    "id": "user-uuid",
+    "name": "Dharsan Kumar",
+    "email": "dharsan@dhya.com"
+  }
+}
+```
+
+#### 2. Find Contact by Email (Contact Lookup)
+**Endpoint:** `GET /api/growth/contacts/find-by-email?email={email}&tenantId={tenantId}`
 
 **Purpose:** Find a contact by email address for n8n workflows
 
@@ -22,9 +48,8 @@ Module 5 implements an automated reply detection and follow-up task creation sys
 
 **Request:**
 ```bash
-GET /api/growth/contacts/find-by-email?email=prospect@company.com
+GET /api/growth/contacts/find-by-email?email=prospect@company.com&tenantId=3bf9bed5-d468-47c5-9c19-61a7e37faedc
 Headers: x-api-key: your-api-key
-Body: { "tenantId": "3bf9bed5-d468-47c5-9c19-61a7e37faedc" }
 ```
 
 **Response (200):**
@@ -49,7 +74,7 @@ Body: { "tenantId": "3bf9bed5-d468-47c5-9c19-61a7e37faedc" }
 }
 ```
 
-#### 2. Create Task from Reply (Main Endpoint)
+#### 3. Create Task from Reply (Main Endpoint)
 **Endpoint:** `POST /api/growth/tasks/create-from-reply`
 
 **Purpose:** Creates a follow-up task when a reply is detected by n8n
@@ -92,11 +117,14 @@ Body: { "tenantId": "3bf9bed5-d468-47c5-9c19-61a7e37faedc" }
 
 ### Implementation Details
 
-1. **Contact Lookup**: Searches for the sender in your tracked contacts
-2. **Email Linking**: Links the task to the original outreach email
-3. **Status Updates**: Updates the original email status to "REPLIED"
-4. **Rich Task Information**: Includes contact details, company info, and campaign context
-5. **Smart Filtering**: Only creates tasks for tracked contacts to avoid spam
+1. **Dynamic Tenant Resolution**: Automatically determines tenant context from inbox email
+2. **Email Address Cleaning**: Extracts clean email addresses from formatted sender fields
+3. **Contact Verification**: Verifies sender exists in your tracked contacts database
+4. **Email Linking**: Links the task to the original outreach email
+5. **Status Updates**: Updates the original email status to "REPLIED"
+6. **Rich Task Information**: Includes contact details, company info, and campaign context
+7. **Smart Filtering**: Only creates tasks for tracked contacts to avoid spam
+8. **Error Resilience**: Graceful handling of unknown contacts and malformed data
 
 ### Database Changes
 
@@ -117,25 +145,50 @@ The system uses existing database tables:
 - **Credentials:** Your sales inbox (e.g., dharsan@dhya.com)
 - **Optional:** Set specific folder/label to monitor
 
-#### 2. HTTP Request Node (Optional - Contact Lookup)
-*Optional step to verify contact exists before creating task*
+#### 2. Code Node (Clean Sender Email)
+*Extracts clean email address from formatted sender field*
 
-- **Name:** Find Contact
+- **Name:** Clean Sender Email
+- **JavaScript Code:**
+```javascript
+const fromString = $input.item.json.from[0].address;
+let cleanedEmail = fromString;
+
+// Regex to find an email address inside angle brackets
+const emailInBrackets = fromString.match(/<(.*?)>/);
+
+if (emailInBrackets && emailInBrackets[1]) {
+  cleanedEmail = emailInBrackets[1];
+}
+
+// Add the cleaned email back to the data
+$input.item.json.cleanedSenderEmail = cleanedEmail;
+
+return $input.item;
+```
+
+#### 3. HTTP Request Node (Fetch Tenant ID)
+*Dynamically finds tenant ID based on your inbox email*
+
+- **Name:** Fetch Tenant ID
 - **Method:** GET
-- **URL:** `https://dhya-spims-backend-prod.onrender.com/api/growth/contacts/find-by-email?email={{ $json.from.address }}`
+- **URL Expression:** `https://dhya-spims-backend-prod.onrender.com/api/growth/tenants/find-by-user-email?email={{ $json.to[0].address }}`
 - **Authentication:** Header Auth
 - **Header Name:** `x-api-key`
 - **Header Value:** `{{ $vars.API_KEY }}`
-- **Body Type:** JSON (Raw)
-- **Body:**
-```javascript
-{
-  "tenantId": "3bf9bed5-d468-47c5-9c19-61a7e37faedc"
-}
-```
 
-#### 3. HTTP Request Node (Create Task)
-Main action node that creates the follow-up task.
+#### 4. HTTP Request Node (Check if Sender is Prospect)
+*Verifies if the sender is a tracked contact*
+
+- **Name:** Check if Sender is Prospect
+- **Method:** GET
+- **URL Expression:** `https://dhya-spims-backend-prod.onrender.com/api/growth/contacts/find-by-email?email={{ $nodes["Clean Sender Email"].json.cleanedSenderEmail }}&tenantId={{ $nodes["Fetch Tenant ID"].json.tenantId }}`
+- **Authentication:** Header Auth
+- **Header Name:** `x-api-key`
+- **Header Value:** `{{ $vars.API_KEY }}`
+
+#### 5. HTTP Request Node (Create Follow-Up Task)
+*Creates the high-priority follow-up task*
 
 - **Name:** Create Follow-Up Task
 - **Method:** POST
@@ -147,17 +200,22 @@ Main action node that creates the follow-up task.
 - **Body Expression:**
 ```javascript
 {
-  "senderEmail": "{{ $json.from.address }}",
+  "senderEmail": "{{ $nodes["Clean Sender Email"].json.cleanedSenderEmail }}",
   "subject": "{{ $json.subject }}",
-  "tenantId": "3bf9bed5-d468-47c5-9c19-61a7e37faedc"
+  "tenantId": "{{ $nodes["Fetch Tenant ID"].json.tenantId }}"
 }
 ```
 
 ### Workflow Flow
 ```
-Gmail Trigger → [Find Contact] → Create Follow-Up Task
+Gmail Trigger → Clean Sender Email → Fetch Tenant ID → Check if Sender is Prospect → Create Follow-Up Task
 ```
-*Note: Find Contact step is optional but recommended for debugging*
+
+### Key Improvements
+- ✅ **No Hardcoded Values:** Tenant ID is dynamically fetched
+- ✅ **Robust Email Cleaning:** Handles formatted email addresses reliably
+- ✅ **Contact Verification:** Ensures sender is a tracked prospect
+- ✅ **Error Handling:** Graceful handling of unknown contacts
 
 ## 🧪 Testing
 

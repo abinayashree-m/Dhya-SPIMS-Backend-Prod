@@ -12,18 +12,50 @@ async function testReplyProcessing() {
   console.log('🔧 API Key:', API_KEY ? `...${API_KEY.slice(-6)}` : 'Not set');
 
   try {
-    // Test 1: Valid reply from tracked contact
-    console.log('\n📧 Test 1: Valid reply from tracked contact');
+    // Test 1: Tenant lookup by user email
+    console.log('\n🏢 Test 1: Tenant lookup by user email');
+    const tenantLookupResponse = await axios.get(
+      `${API_BASE_URL}/api/growth/tenants/find-by-user-email?email=dharsan@dhya.com`,
+      {
+        headers: {
+          'x-api-key': API_KEY,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
+    console.log('✅ Tenant lookup test - Status:', tenantLookupResponse.status);
+    console.log('✅ Tenant lookup test - Response:', tenantLookupResponse.data);
+    
+    const foundTenantId = tenantLookupResponse.data.tenantId;
+
+    // Test 2: Contact lookup with query parameters
+    console.log('\n🔍 Test 2: Contact lookup with query parameters');
+    const contactLookupResponse = await axios.get(
+      `${API_BASE_URL}/api/growth/contacts/find-by-email?email=test@example.com&tenantId=${foundTenantId || TENANT_ID}`,
+      {
+        headers: {
+          'x-api-key': API_KEY,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
+    console.log('🔍 Contact lookup test - Status:', contactLookupResponse.status);
+    console.log('🔍 Contact lookup test - Response:', contactLookupResponse.data);
+
+    // Test 3: Valid reply from tracked contact
+    console.log('\n📧 Test 3: Valid reply from tracked contact');
     const validReplyResponse = await axios.post(
       `${API_BASE_URL}/api/growth/tasks/create-from-reply`,
       {
         senderEmail: 'test@example.com',
         subject: 'Re: Partnership Opportunity',
-        tenantId: TENANT_ID
+        tenantId: foundTenantId || TENANT_ID
       },
       {
         headers: {
-          'Authorization': `Bearer ${API_KEY}`,
+          'x-api-key': API_KEY,
           'Content-Type': 'application/json'
         }
       }
@@ -32,18 +64,18 @@ async function testReplyProcessing() {
     console.log('✅ Valid reply test - Status:', validReplyResponse.status);
     console.log('✅ Valid reply test - Response:', validReplyResponse.data);
 
-    // Test 2: Reply from non-tracked contact
-    console.log('\n📧 Test 2: Reply from non-tracked contact');
+    // Test 4: Reply from non-tracked contact
+    console.log('\n📧 Test 4: Reply from non-tracked contact');
     const unknownReplyResponse = await axios.post(
       `${API_BASE_URL}/api/growth/tasks/create-from-reply`,
       {
         senderEmail: 'unknown@example.com',
         subject: 'Re: Random Email',
-        tenantId: TENANT_ID
+        tenantId: foundTenantId || TENANT_ID
       },
       {
         headers: {
-          'Authorization': `Bearer ${API_KEY}`,
+          'x-api-key': API_KEY,
           'Content-Type': 'application/json'
         }
       }
@@ -52,8 +84,8 @@ async function testReplyProcessing() {
     console.log('📋 Unknown contact test - Status:', unknownReplyResponse.status);
     console.log('📋 Unknown contact test - Response:', unknownReplyResponse.data);
 
-    // Test 3: Invalid request (missing fields)
-    console.log('\n📧 Test 3: Invalid request (missing fields)');
+    // Test 5: Invalid request (missing fields)
+    console.log('\n📧 Test 5: Invalid request (missing fields)');
     try {
       await axios.post(
         `${API_BASE_URL}/api/growth/tasks/create-from-reply`,
@@ -63,7 +95,7 @@ async function testReplyProcessing() {
         },
         {
           headers: {
-            'Authorization': `Bearer ${API_KEY}`,
+            'x-api-key': API_KEY,
             'Content-Type': 'application/json'
           }
         }
