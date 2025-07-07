@@ -2827,7 +2827,7 @@ exports.findTenantByUserEmail = async (req, res) => {
     }
 
     // Find user by email and get their tenant ID
-    const user = await prisma.users.findUnique({
+    const user = await prisma.user.findUnique({
       where: { email: email },
       select: { 
         tenantId: true,
