@@ -894,6 +894,59 @@ router.post('/outreach-emails/:emailId/send', verifyToken, growthController.trig
 
 /**
  * @swagger
+ * /growth/outreach-emails/{emailId}/resend:
+ *   post:
+ *     summary: Create a new draft copy of an existing email for resending
+ *     tags: [Growth Engine]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: emailId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Original Email ID to copy for resending
+ *     responses:
+ *       201:
+ *         description: Draft copy created successfully for resending
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   description: Success message
+ *                 originalEmailId:
+ *                   type: string
+ *                   description: Original email ID
+ *                 newDraftId:
+ *                   type: string
+ *                   description: New draft copy ID
+ *                 subject:
+ *                   type: string
+ *                   description: New draft subject (with "Resend" suffix)
+ *                 contactName:
+ *                   type: string
+ *                   description: Contact name
+ *                 contactEmail:
+ *                   type: string
+ *                   description: Contact email
+ *       400:
+ *         description: Invalid request
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Original email not found
+ *       500:
+ *         description: Server error
+ */
+router.post('/outreach-emails/:emailId/resend', verifyToken, growthController.resendEmail);
+
+/**
+ * @swagger
  * /growth/campaigns/{campaignId}/brands:
  *   post:
  *     summary: Save discovered brands from n8n workflow (n8n only)

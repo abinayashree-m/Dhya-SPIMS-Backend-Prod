@@ -2049,4 +2049,119 @@ exports.triggerEmailSend = async (req, res) => {
       details: error.message 
     });
   }
+};
+
+/**
+ * 📧 RESEND EMAIL: Create a new draft copy of an existing email for resending
+ * Called by frontend when user wants to resend a previously sent email.
+ * Uses JWT authentication.
+ */
+exports.resendEmail = async (req, res) => {
+  console.log('📧 [GROWTH] === RESEND EMAIL REQUEST ===');
+  
+  try {
+    const { emailId } = req.params;
+    const tenantId = req.user?.tenantId;
+    
+    if (!tenantId) {
+      console.log('❌ [GROWTH] Missing tenant ID in token');
+      return res.status(400).json({ error: 'Missing tenant ID' });
+    }
+
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(emailId)) {
+      console.log(`❌ [GROWTH] Invalid UUID format for emailId: ${emailId}`);
+      return res.status(400).json({ 
+        error: 'Invalid emailId format',
+        message: 'emailId must be a valid UUID',
+        received: emailId
+      });
+    }
+
+    console.log(`📧 [GROWTH] Creating resend copy for email: ${emailId}, tenant: ${tenantId}`);
+
+    // First verify the email exists and belongs to the tenant
+    const originalEmail = await prisma.outreachEmail.findFirst({
+      where: { 
+        id: emailId,
+        targetContact: {
+          discoveredSupplier: {
+            discoveredBrand: {
+              campaign: {
+                tenantId: tenantId
+              }
+            }
+          }
+        }
+      },
+      include: {
+        targetContact: {
+          include: {
+            discoveredSupplier: {
+              include: {
+                discoveredBrand: {
+                  include: {
+                    campaign: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!originalEmail) {
+      console.log(`❌ [GROWTH] Original email not found or unauthorized: ${emailId}`);
+      return res.status(404).json({ 
+        error: 'Email not found',
+        message: 'Email not found or you do not have permission to access it.'
+      });
+    }
+
+    console.log(`✅ [GROWTH] Original email found: ${originalEmail.subject}`);
+    console.log(`✅ [GROWTH] Contact: ${originalEmail.targetContact.name} <${originalEmail.targetContact.email}>`);
+
+    // Create a new draft copy of the email
+    const newDraft = await prisma.outreachEmail.create({
+      data: {
+        subject: `${originalEmail.subject} (Resend)`,
+        body: originalEmail.body,
+        status: 'DRAFT',
+        targetContactId: originalEmail.targetContactId
+      }
+    });
+
+    console.log(`✅ [GROWTH] Created new draft copy: ${newDraft.id}`);
+    
+    const responseData = {
+      message: 'Email draft copy created successfully for resending',
+      originalEmailId: emailId,
+      newDraftId: newDraft.id,
+      subject: newDraft.subject,
+      contactName: originalEmail.targetContact.name,
+      contactEmail: originalEmail.targetContact.email
+    };
+    
+    console.log('✅ [GROWTH] Sending success response to frontend:', responseData);
+    console.log('✅ [GROWTH] === RESEND EMAIL SUCCESS ===');
+    res.status(201).json(responseData);
+
+  } catch (error) {
+    console.error('❌ [GROWTH] === RESEND EMAIL ERROR ===');
+    console.error('❌ [GROWTH] Error details:', {
+      message: error.message,
+      code: error.code,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      responseData: error.response?.data
+    });
+    console.error('❌ [GROWTH] Error stack:', error.stack);
+
+    res.status(500).json({ 
+      error: 'Failed to create resend copy',
+      details: error.message 
+    });
+  }
 }; 
