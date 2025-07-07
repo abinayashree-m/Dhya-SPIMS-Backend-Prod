@@ -1746,106 +1746,158 @@ exports.processEmailEvent = async (req, res) => {
       emailId: event.data?.email_id || 'Not provided'
     });
 
-    if (event.type === 'email.replied') {
-      console.log(`📧 [GROWTH] Processing email reply event for message ID: ${event.data?.email_id}`);
-      
-      if (!event.data?.email_id) {
-        console.log('❌ [GROWTH] Missing email_id in reply event data');
-        return res.status(400).json({ 
-          error: 'Missing email_id in event data',
-          eventType: event.type
-        });
-      }
+    if (!event.data?.email_id) {
+      console.log('❌ [GROWTH] Missing email_id in event data');
+      return res.status(400).json({ 
+        error: 'Missing email_id in event data',
+        eventType: event.type
+      });
+    }
 
-      // Find the original email by service message ID
-      const originalEmail = await prisma.outreachEmail.findFirst({
-        where: { serviceMessageId: event.data.email_id },
-        include: { 
-          targetContact: {
-            include: {
-              discoveredSupplier: {
-                include: {
-                  discoveredBrand: {
-                    include: {
-                      campaign: true
-                    }
+    // Find the original email by service message ID with all necessary relations
+    const originalEmail = await prisma.outreachEmail.findFirst({
+      where: { serviceMessageId: event.data.email_id },
+      include: { 
+        targetContact: {
+          include: {
+            discoveredSupplier: {
+              include: {
+                discoveredBrand: {
+                  include: {
+                    campaign: true
                   }
                 }
               }
             }
           }
         }
-      });
-
-      if (!originalEmail) {
-        console.log(`❌ [GROWTH] Original email not found for service message ID: ${event.data.email_id}`);
-        return res.status(404).json({ 
-          error: 'Original email not found',
-          serviceMessageId: event.data.email_id
-        });
       }
+    });
 
-      console.log(`✅ [GROWTH] Found original email: ${originalEmail.subject}`);
-      console.log(`✅ [GROWTH] Contact: ${originalEmail.targetContact.name} at ${originalEmail.targetContact.discoveredSupplier.companyName}`);
+    if (!originalEmail) {
+      console.log(`❌ [GROWTH] Original email not found for service message ID: ${event.data.email_id}`);
+      return res.status(200).json({ 
+        message: 'Event for an unknown email, ignored',
+        serviceMessageId: event.data.email_id
+      });
+    }
 
-      // Update the email status if not already marked as replied
-      if (originalEmail.status !== 'REPLIED') {
+    console.log(`✅ [GROWTH] Found original email: ${originalEmail.subject}`);
+    console.log(`✅ [GROWTH] Contact: ${originalEmail.targetContact.name} at ${originalEmail.targetContact.discoveredSupplier.companyName}`);
+
+    // Get tenantId from the campaign
+    const tenantId = originalEmail.targetContact.discoveredSupplier.discoveredBrand.campaign.tenantId;
+
+    switch (event.type) {
+      case 'email.replied':
+        console.log(`📧 [GROWTH] Processing email reply event`);
+        
+        // Update the email status if not already marked as replied
+        if (originalEmail.status !== 'REPLIED') {
+          await prisma.outreachEmail.update({
+            where: { id: originalEmail.id },
+            data: { status: 'REPLIED' }
+          });
+          console.log(`✅ [GROWTH] Updated email status to REPLIED: ${originalEmail.id}`);
+        }
+
+        // Check if a follow-up task already exists for this email
+        const existingTask = await prisma.followUpTask.findUnique({
+          where: { relatedEmailId: originalEmail.id }
+        });
+
+        if (!existingTask) {
+          // Create a high-priority follow-up task
+          const followUpTask = await prisma.followUpTask.create({
+            data: {
+              tenantId: tenantId,
+              title: `Reply from: ${originalEmail.targetContact.name}`,
+              notes: `Received a reply to the email with subject: "${originalEmail.subject}". Contact: ${originalEmail.targetContact.name} at ${originalEmail.targetContact.discoveredSupplier.companyName}. Original message ID: ${originalEmail.serviceMessageId}`,
+              priority: 'HIGH',
+              status: 'TODO',
+              relatedEmailId: originalEmail.id,
+              relatedContactId: originalEmail.targetContactId
+            }
+          });
+
+          console.log(`✅ [GROWTH] Created follow-up task: ${followUpTask.id}`);
+        } else {
+          console.log(`ℹ️ [GROWTH] Follow-up task already exists for email: ${originalEmail.id}`);
+        }
+        break;
+
+      case 'email.complained':
+        console.log(`📧 [GROWTH] Processing email complaint event`);
+        
+        // Update email status to FAILED
         await prisma.outreachEmail.update({
           where: { id: originalEmail.id },
-          data: { status: 'REPLIED' }
+          data: { status: 'FAILED' }
         });
-        console.log(`✅ [GROWTH] Updated email status to REPLIED: ${originalEmail.id}`);
-      }
 
-      // Check if a follow-up task already exists for this email
-      const existingTask = await prisma.followUpTask.findUnique({
-        where: { relatedEmailId: originalEmail.id }
-      });
+        // Mark contact as DO_NOT_CONTACT
+        await prisma.targetContact.update({
+          where: { id: originalEmail.targetContactId },
+          data: { status: 'DO_NOT_CONTACT' }
+        });
 
-      if (!existingTask) {
-        // Create a high-priority follow-up task
-        const tenantId = originalEmail.targetContact.discoveredSupplier.discoveredBrand.campaign.tenantId;
+        console.log(`✅ [GROWTH] Updated email status to FAILED and contact to DO_NOT_CONTACT for complaint`);
+        break;
+
+      case 'email.bounced':
+        console.log(`📧 [GROWTH] Processing email bounce event`);
         
-        const followUpTask = await prisma.followUpTask.create({
+        // Update email status to FAILED
+        await prisma.outreachEmail.update({
+          where: { id: originalEmail.id },
+          data: { status: 'FAILED' }
+        });
+
+        // Mark contact as DO_NOT_CONTACT
+        await prisma.targetContact.update({
+          where: { id: originalEmail.targetContactId },
+          data: { status: 'DO_NOT_CONTACT' }
+        });
+
+        console.log(`✅ [GROWTH] Updated email status to FAILED and contact to DO_NOT_CONTACT for bounce`);
+        break;
+
+      case 'email.opened':
+        console.log(`📧 [GROWTH] Processing email opened event`);
+        
+        // Create an engagement event record
+        const openedEvent = await prisma.outreachEmailEvent.create({
           data: {
-            tenantId: tenantId,
-            title: `Reply from: ${originalEmail.targetContact.name}`,
-            notes: `Received a reply to the email with subject: "${originalEmail.subject}". Contact: ${originalEmail.targetContact.name} at ${originalEmail.targetContact.discoveredSupplier.companyName}. Original message ID: ${originalEmail.serviceMessageId}`,
-            priority: 'HIGH',
-            status: 'TODO',
-            relatedEmailId: originalEmail.id,
-            relatedContactId: originalEmail.targetContactId
+            outreachEmailId: originalEmail.id,
+            type: 'OPENED',
+            ipAddress: event.data?.ip || null,
+            userAgent: event.data?.user_agent || null
           }
         });
 
-        console.log(`✅ [GROWTH] Created follow-up task: ${followUpTask.id}`);
-        console.log(`✅ [GROWTH] Task title: ${followUpTask.title}`);
-      } else {
-        console.log(`ℹ️ [GROWTH] Follow-up task already exists for email: ${originalEmail.id}`);
-      }
+        console.log(`✅ [GROWTH] Created email opened event: ${openedEvent.id} for email: ${originalEmail.id}`);
+        break;
 
-    } else if (event.type === 'email.bounced') {
-      console.log(`📧 [GROWTH] Processing email bounce event for message ID: ${event.data?.email_id}`);
-      
-      if (!event.data?.email_id) {
-        console.log('❌ [GROWTH] Missing email_id in bounce event data');
-        return res.status(400).json({ 
-          error: 'Missing email_id in event data',
-          eventType: event.type
+      case 'email.clicked':
+        console.log(`📧 [GROWTH] Processing email clicked event`);
+        
+        // Create an engagement event record
+        const clickedEvent = await prisma.outreachEmailEvent.create({
+          data: {
+            outreachEmailId: originalEmail.id,
+            type: 'CLICKED',
+            ipAddress: event.data?.ip || null,
+            userAgent: event.data?.user_agent || null
+          }
         });
-      }
 
-      // Handle bounced emails - update status to FAILED
-      const updatedEmails = await prisma.outreachEmail.updateMany({
-        where: { serviceMessageId: event.data.email_id },
-        data: { status: 'FAILED' }
-      });
+        console.log(`✅ [GROWTH] Created email clicked event: ${clickedEvent.id} for email: ${originalEmail.id}`);
+        break;
 
-      console.log(`✅ [GROWTH] Updated ${updatedEmails.count} email(s) to FAILED status for bounce event`);
-
-    } else {
-      console.log(`ℹ️ [GROWTH] Unhandled event type: ${event.type}`);
-      // For other event types, we just acknowledge receipt but don't process
+      default:
+        console.log(`ℹ️ [GROWTH] Unhandled event type: ${event.type}`);
+        // For other event types, we just acknowledge receipt but don't process
+        break;
     }
 
     console.log('✅ [GROWTH] === PROCESS EMAIL EVENT SUCCESS ===');
@@ -1861,6 +1913,211 @@ exports.processEmailEvent = async (req, res) => {
     console.error('❌ [GROWTH] Error stack:', error.stack);
     res.status(500).json({ 
       error: 'Failed to process email event',
+      details: error.message 
+    });
+  }
+};
+
+/**
+ * 🚫 CHECK CONTACT SUPPRESSION: Check if a contact is suppressed (DO_NOT_CONTACT)
+ * Called by frontend before generating drafts or sending emails.
+ * Uses JWT authentication.
+ */
+exports.checkContactSuppression = async (req, res) => {
+  console.log('🚫 [GROWTH] === CHECK CONTACT SUPPRESSION REQUEST ===');
+  
+  try {
+    const { contactId } = req.params;
+    const tenantId = req.user?.tenantId;
+    
+    if (!tenantId) {
+      console.log('❌ [GROWTH] Missing tenant ID in token');
+      return res.status(400).json({ error: 'Missing tenant ID' });
+    }
+
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(contactId)) {
+      console.log(`❌ [GROWTH] Invalid UUID format for contactId: ${contactId}`);
+      return res.status(400).json({ 
+        error: 'Invalid contactId format',
+        message: 'contactId must be a valid UUID',
+        received: contactId
+      });
+    }
+
+    console.log(`🚫 [GROWTH] Checking suppression for contact: ${contactId}, tenant: ${tenantId}`);
+
+    // Find the contact and verify tenant ownership
+    const contact = await prisma.targetContact.findFirst({
+      where: { 
+        id: contactId,
+        discoveredSupplier: {
+          discoveredBrand: {
+            campaign: {
+              tenantId: tenantId
+            }
+          }
+        }
+      },
+      include: {
+        discoveredSupplier: {
+          include: {
+            discoveredBrand: true
+          }
+        }
+      }
+    });
+
+    if (!contact) {
+      console.log(`❌ [GROWTH] Contact not found: ${contactId} for tenant: ${tenantId}`);
+      return res.status(404).json({ 
+        error: 'Contact not found',
+        message: 'Contact not found or you do not have permission to access it.'
+      });
+    }
+
+    const suppressionStatus = {
+      contactId: contact.id,
+      name: contact.name,
+      email: contact.email,
+      company: contact.discoveredSupplier.companyName,
+      status: contact.status,
+      isSuppressed: contact.status === 'DO_NOT_CONTACT',
+      canSendEmail: contact.status === 'ACTIVE'
+    };
+
+    console.log(`✅ [GROWTH] Contact suppression status retrieved for: ${contactId}`, {
+      status: suppressionStatus.status,
+      isSuppressed: suppressionStatus.isSuppressed,
+      canSendEmail: suppressionStatus.canSendEmail
+    });
+    console.log('✅ [GROWTH] === CHECK CONTACT SUPPRESSION SUCCESS ===');
+    
+    res.status(200).json(suppressionStatus);
+
+  } catch (error) {
+    console.error('❌ [GROWTH] === CHECK CONTACT SUPPRESSION ERROR ===');
+    console.error(`❌ [GROWTH] Error checking contact suppression for contact ${req.params.contactId}:`, error);
+    console.error('❌ [GROWTH] Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to check contact suppression status',
+      details: error.message 
+    });
+  }
+};
+
+/**
+ * 📊 GET EMAIL ENGAGEMENT STATS: Get engagement statistics for outreach emails
+ * Called by frontend to display email engagement metrics.
+ * Uses JWT authentication.
+ */
+exports.getEmailEngagementStats = async (req, res) => {
+  console.log('📊 [GROWTH] === GET EMAIL ENGAGEMENT STATS REQUEST ===');
+  
+  try {
+    const { emailId } = req.params;
+    const tenantId = req.user?.tenantId;
+    
+    if (!tenantId) {
+      console.log('❌ [GROWTH] Missing tenant ID in token');
+      return res.status(400).json({ error: 'Missing tenant ID' });
+    }
+
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(emailId)) {
+      console.log(`❌ [GROWTH] Invalid UUID format for emailId: ${emailId}`);
+      return res.status(400).json({ 
+        error: 'Invalid emailId format',
+        message: 'emailId must be a valid UUID',
+        received: emailId
+      });
+    }
+
+    console.log(`📊 [GROWTH] Fetching engagement stats for email: ${emailId}, tenant: ${tenantId}`);
+
+    // First verify the email exists and belongs to the tenant
+    const email = await prisma.outreachEmail.findFirst({
+      where: { 
+        id: emailId,
+        targetContact: {
+          discoveredSupplier: {
+            discoveredBrand: {
+              campaign: {
+                tenantId: tenantId
+              }
+            }
+          }
+        }
+      },
+      include: {
+        events: {
+          orderBy: { createdAt: 'desc' }
+        },
+        targetContact: {
+          include: {
+            discoveredSupplier: {
+              include: {
+                discoveredBrand: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!email) {
+      console.log(`❌ [GROWTH] Email not found: ${emailId} for tenant: ${tenantId}`);
+      return res.status(404).json({ 
+        error: 'Email not found',
+        message: 'Email not found or you do not have permission to access it.'
+      });
+    }
+
+    // Calculate engagement statistics
+    const stats = {
+      emailId: email.id,
+      subject: email.subject,
+      status: email.status,
+      sentAt: email.sentAt,
+      targetContact: {
+        name: email.targetContact.name,
+        email: email.targetContact.email,
+        company: email.targetContact.discoveredSupplier.companyName
+      },
+      engagement: {
+        totalEvents: email.events.length,
+        openCount: email.events.filter(e => e.type === 'OPENED').length,
+        clickCount: email.events.filter(e => e.type === 'CLICKED').length,
+        firstOpened: email.events.find(e => e.type === 'OPENED')?.createdAt || null,
+        firstClicked: email.events.find(e => e.type === 'CLICKED')?.createdAt || null,
+        lastActivity: email.events.length > 0 ? email.events[0].createdAt : null
+      },
+      events: email.events.map(event => ({
+        id: event.id,
+        type: event.type,
+        ipAddress: event.ipAddress,
+        userAgent: event.userAgent,
+        createdAt: event.createdAt
+      }))
+    };
+
+    console.log(`✅ [GROWTH] Engagement stats retrieved for email: ${emailId}`, {
+      totalEvents: stats.engagement.totalEvents,
+      openCount: stats.engagement.openCount,
+      clickCount: stats.engagement.clickCount
+    });
+    console.log('✅ [GROWTH] === GET EMAIL ENGAGEMENT STATS SUCCESS ===');
+    
+    res.status(200).json(stats);
+
+  } catch (error) {
+    console.error('❌ [GROWTH] === GET EMAIL ENGAGEMENT STATS ERROR ===');
+    console.error(`❌ [GROWTH] Error fetching engagement stats for email ${req.params.emailId}:`, error);
+    console.error('❌ [GROWTH] Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to fetch email engagement statistics',
       details: error.message 
     });
   }

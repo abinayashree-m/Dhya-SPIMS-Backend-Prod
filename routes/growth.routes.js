@@ -947,6 +947,161 @@ router.post('/outreach-emails/:emailId/resend', verifyToken, growthController.re
 
 /**
  * @swagger
+ * /growth/outreach-emails/{emailId}/engagement-stats:
+ *   get:
+ *     summary: Get engagement statistics for a specific outreach email
+ *     tags: [Growth Engine]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: emailId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Outreach Email ID to get engagement stats for
+ *     responses:
+ *       200:
+ *         description: Engagement statistics retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 emailId:
+ *                   type: string
+ *                   description: Email ID
+ *                 subject:
+ *                   type: string
+ *                   description: Email subject
+ *                 status:
+ *                   type: string
+ *                   description: Email status
+ *                 sentAt:
+ *                   type: string
+ *                   format: date-time
+ *                   description: When email was sent
+ *                 targetContact:
+ *                   type: object
+ *                   properties:
+ *                     name:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ *                     company:
+ *                       type: string
+ *                 engagement:
+ *                   type: object
+ *                   properties:
+ *                     totalEvents:
+ *                       type: integer
+ *                       description: Total number of engagement events
+ *                     openCount:
+ *                       type: integer
+ *                       description: Number of times email was opened
+ *                     clickCount:
+ *                       type: integer
+ *                       description: Number of times links were clicked
+ *                     firstOpened:
+ *                       type: string
+ *                       format: date-time
+ *                       description: When email was first opened
+ *                     firstClicked:
+ *                       type: string
+ *                       format: date-time
+ *                       description: When first link was clicked
+ *                     lastActivity:
+ *                       type: string
+ *                       format: date-time
+ *                       description: Most recent engagement activity
+ *                 events:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       type:
+ *                         type: string
+ *                         enum: [OPENED, CLICKED]
+ *                       ipAddress:
+ *                         type: string
+ *                       userAgent:
+ *                         type: string
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *       400:
+ *         description: Invalid request or email ID format
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Email not found
+ *       500:
+ *         description: Server error
+ */
+router.get('/outreach-emails/:emailId/engagement-stats', verifyToken, growthController.getEmailEngagementStats);
+
+/**
+ * @swagger
+ * /growth/contacts/{contactId}/suppression-status:
+ *   get:
+ *     summary: Check if a contact is suppressed (DO_NOT_CONTACT)
+ *     tags: [Growth Engine]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: contactId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Target Contact ID to check suppression status for
+ *     responses:
+ *       200:
+ *         description: Contact suppression status retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 contactId:
+ *                   type: string
+ *                   description: Contact ID
+ *                 name:
+ *                   type: string
+ *                   description: Contact name
+ *                 email:
+ *                   type: string
+ *                   description: Contact email
+ *                 company:
+ *                   type: string
+ *                   description: Company name
+ *                 status:
+ *                   type: string
+ *                   enum: [ACTIVE, DO_NOT_CONTACT]
+ *                   description: Contact status
+ *                 isSuppressed:
+ *                   type: boolean
+ *                   description: Whether the contact is suppressed
+ *                 canSendEmail:
+ *                   type: boolean
+ *                   description: Whether emails can be sent to this contact
+ *       400:
+ *         description: Invalid request or contact ID format
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Contact not found
+ *       500:
+ *         description: Server error
+ */
+router.get('/contacts/:contactId/suppression-status', verifyToken, growthController.checkContactSuppression);
+
+/**
+ * @swagger
  * /growth/campaigns/{campaignId}/brands:
  *   post:
  *     summary: Save discovered brands from n8n workflow (n8n only)

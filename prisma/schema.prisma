@@ -735,6 +735,7 @@ model TargetContact {
   email                String?
   linkedinUrl          String?
   source               String?            @default("n8n-apollo-enrichment")
+  status               ContactStatus      @default(ACTIVE)
   discoveredSupplierId String             @db.Uuid
   discoveredSupplier   DiscoveredSupplier @relation(fields: [discoveredSupplierId], references: [id], onDelete: Cascade)
   outreachEmails       OutreachEmail[]    // New relation for outreach emails
@@ -757,12 +758,29 @@ model OutreachEmail {
   targetContactId  String         @db.Uuid
   targetContact    TargetContact  @relation(fields: [targetContactId], references: [id], onDelete: Cascade)
   followUpTask     FollowUpTask?  // New relation for follow-up task
+  events           OutreachEmailEvent[] // New relation for engagement events
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
   @@index([targetContactId])
   @@index([status])
   @@map("OutreachEmail")
+}
+
+model OutreachEmailEvent {
+  id              String         @id @default(uuid()) @db.Uuid
+  type            EmailEventType
+  ipAddress       String?
+  userAgent       String?
+  
+  outreachEmailId String         @db.Uuid
+  outreachEmail   OutreachEmail  @relation(fields: [outreachEmailId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime       @default(now())
+
+  @@index([outreachEmailId])
+  @@index([type])
+  @@map("OutreachEmailEvent")
 }
 
 model FollowUpTask {
@@ -853,4 +871,9 @@ enum TaskPriority {
   HIGH
   MEDIUM
   LOW
+}
+
+enum ContactStatus {
+  ACTIVE
+  DO_NOT_CONTACT
 }
