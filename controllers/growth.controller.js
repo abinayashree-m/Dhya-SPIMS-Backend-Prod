@@ -1587,4 +1587,134 @@ exports.getOutreachEmails = async (req, res) => {
       details: error.message 
     });
   }
+};
+
+/**
+ * 📧 GET OUTREACH EMAIL: Fetch a single email draft for n8n sending workflow
+ * Called by n8n workflow when preparing to send an approved email draft.
+ * Uses n8n authentication (API key).
+ */
+exports.getOutreachEmail = async (req, res) => {
+  console.log('📧 [GROWTH] === GET OUTREACH EMAIL REQUEST ===');
+  
+  try {
+    const { emailId } = req.params;
+    
+    if (!emailId) {
+      console.log('❌ [GROWTH] Missing emailId parameter');
+      return res.status(400).json({ error: 'Missing emailId parameter' });
+    }
+
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(emailId)) {
+      console.log(`❌ [GROWTH] Invalid UUID format for emailId: ${emailId}`);
+      return res.status(400).json({ 
+        error: 'Invalid emailId format',
+        message: 'emailId must be a valid UUID',
+        received: emailId
+      });
+    }
+
+    console.log(`📧 [GROWTH] Fetching email draft: ${emailId}`);
+
+    const email = await prisma.outreachEmail.findUnique({
+      where: { id: emailId },
+      include: { 
+        targetContact: true // Include contact to get the recipient's email
+      }
+    });
+
+    if (!email) {
+      console.log(`❌ [GROWTH] Email draft not found: ${emailId}`);
+      return res.status(404).json({ 
+        error: 'Email draft not found',
+        emailId: emailId
+      });
+    }
+
+    console.log(`✅ [GROWTH] Email draft found: ${email.subject}`);
+    console.log(`✅ [GROWTH] Recipient: ${email.targetContact.email}`);
+    console.log('✅ [GROWTH] === GET OUTREACH EMAIL SUCCESS ===');
+    
+    res.status(200).json(email);
+  } catch (error) {
+    console.error('❌ [GROWTH] === GET OUTREACH EMAIL ERROR ===');
+    console.error(`❌ [GROWTH] Error fetching email draft ${req.params.emailId}:`, error);
+    console.error('❌ [GROWTH] Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to fetch email draft',
+      details: error.message 
+    });
+  }
+};
+
+/**
+ * 📤 UPDATE EMAIL AS SENT: Update an email's status to SENT after n8n sends it
+ * Called by n8n workflow after successfully sending an email.
+ * Uses n8n authentication (API key).
+ */
+exports.updateEmailAsSent = async (req, res) => {
+  console.log('📤 [GROWTH] === UPDATE EMAIL AS SENT REQUEST ===');
+  
+  try {
+    const { emailId } = req.params;
+    const { serviceMessageId } = req.body;
+    
+    if (!emailId) {
+      console.log('❌ [GROWTH] Missing emailId parameter');
+      return res.status(400).json({ error: 'Missing emailId parameter' });
+    }
+
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(emailId)) {
+      console.log(`❌ [GROWTH] Invalid UUID format for emailId: ${emailId}`);
+      return res.status(400).json({ 
+        error: 'Invalid emailId format',
+        message: 'emailId must be a valid UUID',
+        received: emailId
+      });
+    }
+
+    console.log(`📤 [GROWTH] Updating email status to SENT: ${emailId}`);
+    console.log(`📤 [GROWTH] Service message ID: ${serviceMessageId || 'Not provided'}`);
+
+    const updatedEmail = await prisma.outreachEmail.update({
+      where: { id: emailId },
+      data: {
+        status: 'SENT',
+        sentAt: new Date(),
+        serviceMessageId: serviceMessageId || null
+      }
+    });
+
+    console.log(`✅ [GROWTH] Email marked as SENT: ${updatedEmail.id}`);
+    console.log('✅ [GROWTH] === UPDATE EMAIL AS SENT SUCCESS ===');
+    
+    res.status(200).json({
+      message: 'Email status updated to SENT successfully',
+      emailId: updatedEmail.id,
+      status: updatedEmail.status,
+      sentAt: updatedEmail.sentAt,
+      serviceMessageId: updatedEmail.serviceMessageId
+    });
+  } catch (error) {
+    console.error('❌ [GROWTH] === UPDATE EMAIL AS SENT ERROR ===');
+    console.error(`❌ [GROWTH] Error updating email status ${req.params.emailId}:`, error);
+    console.error('❌ [GROWTH] Error stack:', error.stack);
+    
+    // Check if it's a record not found error
+    if (error.code === 'P2025') {
+      return res.status(404).json({ 
+        error: 'Email draft not found',
+        emailId: req.params.emailId
+      });
+    }
+    
+    res.status(500).json({ 
+      error: 'Failed to update email status',
+      details: error.message 
+    });
+  }
 }; 

@@ -3,6 +3,9 @@ const router = express.Router();
 const growthController = require('../controllers/growth.controller');
 const { verifyToken, flexibleAuthMiddleware, n8nAuthMiddleware } = require('../middlewares/auth.middleware');
 
+// Destructure the new controller functions
+const { getOutreachEmail, updateEmailAsSent } = growthController;
+
 // Add console logs to track route access
 console.log('🚀 [GROWTH ROUTES] Growth routes file loaded');
 console.log('🚀 [GROWTH ROUTES] Controller methods available:', Object.keys(growthController));
@@ -654,6 +657,123 @@ router.get('/contacts/:contactId/outreach-emails', verifyToken, growthController
  *         description: Server error
  */
 router.post('/outreach-emails', n8nAuthMiddleware, growthController.saveOutreachEmail);
+
+/**
+ * @swagger
+ * /growth/outreach-emails/{emailId}:
+ *   get:
+ *     summary: Get a single outreach email draft for n8n sending workflow (n8n only)
+ *     tags: [Growth Engine]
+ *     security:
+ *       - apiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: emailId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Outreach Email ID
+ *     responses:
+ *       200:
+ *         description: Email draft retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: string
+ *                   description: Email ID
+ *                 subject:
+ *                   type: string
+ *                   description: Email subject
+ *                 body:
+ *                   type: string
+ *                   description: Email body
+ *                 status:
+ *                   type: string
+ *                   description: Email status
+ *                 targetContact:
+ *                   type: object
+ *                   properties:
+ *                     email:
+ *                       type: string
+ *                       description: Recipient email address
+ *                     name:
+ *                       type: string
+ *                       description: Recipient name
+ *       400:
+ *         description: Invalid emailId format
+ *       401:
+ *         description: Unauthorized (invalid API key)
+ *       404:
+ *         description: Email draft not found
+ *       500:
+ *         description: Server error
+ */
+router.get('/outreach-emails/:emailId', n8nAuthMiddleware, getOutreachEmail);
+
+/**
+ * @swagger
+ * /growth/outreach-emails/{emailId}/sent:
+ *   patch:
+ *     summary: Update an email's status to SENT after n8n sends it (n8n only)
+ *     tags: [Growth Engine]
+ *     security:
+ *       - apiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: emailId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Outreach Email ID
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               serviceMessageId:
+ *                 type: string
+ *                 description: Service message ID from email provider (optional)
+ *     responses:
+ *       200:
+ *         description: Email status updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   description: Success message
+ *                 emailId:
+ *                   type: string
+ *                   description: Email ID
+ *                 status:
+ *                   type: string
+ *                   description: Updated status (SENT)
+ *                 sentAt:
+ *                   type: string
+ *                   format: date-time
+ *                   description: Timestamp when email was sent
+ *                 serviceMessageId:
+ *                   type: string
+ *                   description: Service message ID
+ *       400:
+ *         description: Invalid emailId format
+ *       401:
+ *         description: Unauthorized (invalid API key)
+ *       404:
+ *         description: Email draft not found
+ *       500:
+ *         description: Server error
+ */
+router.patch('/outreach-emails/:emailId/sent', n8nAuthMiddleware, updateEmailAsSent);
 
 /**
  * @swagger
