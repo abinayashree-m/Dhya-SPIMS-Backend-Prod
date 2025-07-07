@@ -1373,6 +1373,81 @@ router.post('/tasks/:taskId/generate-reply', verifyToken, growthController.gener
 
 /**
  * @swagger
+ * /growth/ai-reply-callback:
+ *   post:
+ *     summary: Callback endpoint for n8n to deliver completed AI reply drafts
+ *     tags: [Growth Engine]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - taskId
+ *               - contactId
+ *               - aiReply
+ *             properties:
+ *               taskId:
+ *                 type: string
+ *                 format: uuid
+ *                 description: Follow-up task ID that requested the AI reply
+ *               contactId:
+ *                 type: string
+ *                 format: uuid
+ *                 description: Target contact ID for the reply
+ *               aiReply:
+ *                 type: string
+ *                 description: AI-generated reply body
+ *               subject:
+ *                 type: string
+ *                 description: AI-generated subject line (optional)
+ *               originalSubject:
+ *                 type: string
+ *                 description: Original email subject for reference (optional)
+ *               contactName:
+ *                 type: string
+ *                 description: Contact name for reference (optional)
+ *               companyName:
+ *                 type: string
+ *                 description: Company name for reference (optional)
+ *     responses:
+ *       201:
+ *         description: AI reply draft saved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     taskId:
+ *                       type: string
+ *                     draftId:
+ *                       type: string
+ *                     contactId:
+ *                       type: string
+ *                     subject:
+ *                       type: string
+ *                     status:
+ *                       type: string
+ *       400:
+ *         description: Missing required fields
+ *       404:
+ *         description: Task not found
+ *       500:
+ *         description: Server error
+ */
+// AI Reply Callback Route (called by n8n, no auth required)
+router.post('/ai-reply-callback', growthController.handleAIReplyCallback);
+
+/**
+ * @swagger
  * /growth/outreach-emails/{emailId}/resend:
  *   post:
  *     summary: Create a new draft copy of an existing email for resending

@@ -3856,17 +3856,18 @@ exports.deleteGrowthTask = async (req, res) => {
 };
 
 /**
- * 🤖 GENERATE AI REPLY: Generate an AI-powered reply draft for a specific task
- * This endpoint gathers all context and triggers an n8n workflow to generate a reply.
+ * 🚀 GENERATE AI REPLY (ASYNC): Trigger AI-powered reply draft generation
+ * This endpoint triggers an n8n workflow asynchronously and returns immediately.
+ * The n8n workflow will call back when the draft is ready.
  */
 exports.generateAIReply = async (req, res) => {
-  console.log('🤖 [GROWTH] === GENERATE AI REPLY REQUEST ===');
+  console.log('🚀 [GROWTH] === ASYNC AI REPLY GENERATION REQUEST ===');
   
   try {
     const { taskId } = req.params;
     const tenantId = req.user.tenantId;
 
-    console.log('🤖 [GROWTH] AI reply generation request:', {
+    console.log('🚀 [GROWTH] Async AI reply generation request:', {
       taskId: taskId,
       tenantId: tenantId
     });
@@ -3895,16 +3896,6 @@ exports.generateAIReply = async (req, res) => {
       }
     });
 
-    // Fetch company persona separately (it's related to tenant, not campaign)
-    let companyPersona = null;
-    try {
-      companyPersona = await prisma.companyPersona.findUnique({
-        where: { tenantId: tenantId }
-      });
-    } catch (error) {
-      console.log('ℹ️ [GROWTH] No company persona found for tenant:', tenantId);
-    }
-
     if (!task) {
       console.log(`❌ [GROWTH] Task not found: ${taskId}`);
       return res.status(404).json({ 
@@ -3922,10 +3913,20 @@ exports.generateAIReply = async (req, res) => {
       });
     }
 
+    // Fetch company persona separately (it's related to tenant, not campaign)
+    let companyPersona = null;
+    try {
+      companyPersona = await prisma.companyPersona.findUnique({
+        where: { tenantId: tenantId }
+      });
+    } catch (error) {
+      console.log('ℹ️ [GROWTH] No company persona found for tenant:', tenantId);
+    }
+
     // Extract the customer's reply text from the task notes
     const replyText = task.notes?.split('CUSTOMER REPLY:\n')[1]?.split('\n\n--- CONTEXT ---')[0]?.trim() || 'No reply text available';
     
-    console.log('🤖 [GROWTH] Extracted reply text:', {
+    console.log('🚀 [GROWTH] Extracted reply text:', {
       hasReplyText: !!replyText,
       replyLength: replyText.length
     });
@@ -3933,6 +3934,7 @@ exports.generateAIReply = async (req, res) => {
     // Prepare the context bundle for n8n
     const contextBundle = {
       taskId: task.id,
+      contactId: task.relatedContact?.id,
       contactName: task.relatedContact?.name || 'Unknown Contact',
       contactEmail: task.relatedContact?.email || '',
       companyName: task.relatedContact?.discoveredSupplier?.companyName || 'Unknown Company',
@@ -3952,17 +3954,21 @@ exports.generateAIReply = async (req, res) => {
       companyPersona: {
         id: companyPersona?.id || null,
         summary: companyPersona?.executiveSummary || 'Company persona not available'
-      }
+      },
+
+      // Callback URL for n8n to return the result
+      callbackUrl: `${process.env.BACKEND_BASE_URL || 'https://dhya-spims-backend-prod.onrender.com'}/api/growth/ai-reply-callback`
     };
 
-    console.log('🤖 [GROWTH] Prepared context bundle:', {
+    console.log('🚀 [GROWTH] Prepared context bundle:', {
       hasOriginalEmail: !!contextBundle.originalEmail.body,
       hasReplyText: !!contextBundle.replyText,
       hasPersona: !!companyPersona,
-      contactName: contextBundle.contactName
+      contactName: contextBundle.contactName,
+      callbackUrl: contextBundle.callbackUrl
     });
 
-    // Trigger the n8n ReplyDrafter workflow
+    // Trigger the n8n ReplyDrafter workflow (fire-and-forget)
     const n8nWebhookUrl = process.env.N8N_REPLY_DRAFTER_WEBHOOK_URL;
     
     if (!n8nWebhookUrl) {
@@ -3973,39 +3979,38 @@ exports.generateAIReply = async (req, res) => {
       });
     }
 
-    console.log('🤖 [GROWTH] Triggering n8n ReplyDrafter workflow...');
+    console.log('🚀 [GROWTH] Triggering async n8n ReplyDrafter workflow...');
 
-    // Make the request to n8n and wait for the response
+    // Fire-and-forget the webhook call (no await, no timeout)
     const axios = require('axios');
-    console.log('🔗 [GROWTH] Making request to n8n webhook:', n8nWebhookUrl);
-    
-    const startTime = Date.now();
-    const n8nResponse = await axios.post(n8nWebhookUrl, contextBundle, {
-      timeout: 100000, // Increased to 90 seconds for AI processing
+    axios.post(n8nWebhookUrl, contextBundle, {
+      timeout: 10000, // Short timeout just for the trigger
       headers: {
         'Content-Type': 'application/json'
       }
-    });
-    
-    const endTime = Date.now();
-    const duration = endTime - startTime;
-    console.log('⏱️ [GROWTH] n8n request completed in:', duration + 'ms');
-
-    console.log('🤖 [GROWTH] n8n ReplyDrafter response:', {
-      status: n8nResponse.status,
-      hasData: !!n8nResponse.data
+    }).catch(error => {
+      console.error('❌ [GROWTH] Error triggering n8n workflow:', error.message);
+      // Note: We don't fail the response here since it's fire-and-forget
     });
 
-    // Return the AI-generated reply draft
-    const aiReplyDraft = n8nResponse.data?.reply || n8nResponse.data?.generatedReply || 'AI reply generation failed';
-    
-    console.log('✅ [GROWTH] AI reply generated successfully');
-    console.log('✅ [GROWTH] === GENERATE AI REPLY SUCCESS ===');
+    // Mark the task as "in progress" for AI generation
+    await prisma.followUpTask.update({
+      where: { id: taskId },
+      data: { 
+        status: 'IN_PROGRESS',
+        updatedAt: new Date()
+      }
+    });
 
-    res.status(200).json({ 
-      message: 'AI reply generated successfully',
+    console.log('✅ [GROWTH] AI reply generation triggered successfully');
+    console.log('✅ [GROWTH] === ASYNC AI REPLY GENERATION SUCCESS ===');
+
+    // Immediately respond to the frontend with 202 Accepted
+    res.status(202).json({ 
+      message: 'AI reply generation started successfully',
       taskId: task.id,
-      aiReplyDraft: aiReplyDraft,
+      status: 'in_progress',
+      estimatedTime: '30-60 seconds',
       context: {
         contactName: contextBundle.contactName,
         companyName: contextBundle.companyName,
@@ -4014,30 +4019,140 @@ exports.generateAIReply = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ [GROWTH] === GENERATE AI REPLY ERROR ===');
-    console.error('❌ [GROWTH] Error generating AI reply:', error);
+    console.error('❌ [GROWTH] === ASYNC AI REPLY GENERATION ERROR ===');
+    console.error('❌ [GROWTH] Error starting AI reply generation:', error);
     console.error('❌ [GROWTH] Error stack:', error.stack);
     
-    if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
-      return res.status(408).json({ 
-        error: 'Request timeout',
-        message: 'AI reply generation took too long. This usually indicates the n8n workflow is not responding. Please check if the workflow is active and Google Gemini API is configured.',
-        details: {
-          webhookUrl: n8nWebhookUrl,
-          timeout: '90 seconds',
-          possibleCauses: [
-            'n8n workflow is not active',
-            'Google Gemini API is slow or misconfigured', 
-            'Network connectivity issues',
-            'Workflow has an error'
-          ]
-        }
+    res.status(500).json({ 
+      error: 'Failed to start AI reply generation',
+      message: 'Internal server error while starting AI reply generation.',
+      details: error.message 
+    });
+  }
+};
+
+/**
+ * 📥 AI REPLY CALLBACK: Receive completed AI reply from n8n
+ * This endpoint is called by n8n when the AI reply generation is complete.
+ * It saves the generated draft to the database and updates the task status.
+ */
+exports.handleAIReplyCallback = async (req, res) => {
+  console.log('📥 [GROWTH] === AI REPLY CALLBACK RECEIVED ===');
+  
+  try {
+    const { taskId, contactId, aiReply, subject, originalSubject, contactName, companyName } = req.body;
+
+    console.log('📥 [GROWTH] AI reply callback data:', {
+      taskId: taskId,
+      contactId: contactId,
+      hasAIReply: !!aiReply,
+      replyLength: aiReply?.length || 0,
+      subject: subject,
+      contactName: contactName,
+      companyName: companyName
+    });
+
+    // Validate required fields
+    if (!taskId) {
+      console.error('❌ [GROWTH] Missing taskId in callback');
+      return res.status(400).json({ 
+        error: 'Missing required field: taskId' 
       });
     }
+
+    if (!contactId) {
+      console.error('❌ [GROWTH] Missing contactId in callback');
+      return res.status(400).json({ 
+        error: 'Missing required field: contactId' 
+      });
+    }
+
+    if (!aiReply) {
+      console.error('❌ [GROWTH] Missing aiReply in callback');
+      return res.status(400).json({ 
+        error: 'Missing required field: aiReply' 
+      });
+    }
+
+    // Fetch the task to verify it exists
+    const task = await prisma.followUpTask.findUnique({
+      where: { id: taskId },
+      include: {
+        relatedContact: true,
+        relatedEmail: true
+      }
+    });
+
+    if (!task) {
+      console.error('❌ [GROWTH] Task not found for callback:', taskId);
+      return res.status(404).json({ 
+        error: 'Task not found',
+        message: 'The specified task could not be found.'
+      });
+    }
+
+    // Generate a subject line if not provided
+    const replySubject = subject || `Re: ${originalSubject || task.relatedEmail?.subject || 'Your Inquiry'}`;
+
+    // Create the AI-generated reply draft as an OutreachEmail
+    const aiReplyDraft = await prisma.outreachEmail.create({
+      data: {
+        targetContactId: contactId,
+        subject: replySubject,
+        body: aiReply,
+        status: 'DRAFT', // This is an AI-generated draft
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+    });
+
+    console.log('✅ [GROWTH] AI reply draft created:', {
+      draftId: aiReplyDraft.id,
+      contactId: contactId,
+      subject: replySubject,
+      bodyLength: aiReply.length
+    });
+
+    // Update the task status back to TODO and add a note about the AI draft
+    const updatedTask = await prisma.followUpTask.update({
+      where: { id: taskId },
+      data: { 
+        status: 'TODO',
+        notes: task.notes + `\n\n--- AI REPLY DRAFT GENERATED ---\nDraft ID: ${aiReplyDraft.id}\nGenerated at: ${new Date().toISOString()}\nSubject: ${replySubject}`,
+        updatedAt: new Date()
+      }
+    });
+
+    console.log('✅ [GROWTH] Task updated with AI draft info:', {
+      taskId: taskId,
+      status: updatedTask.status,
+      draftId: aiReplyDraft.id
+    });
+
+    console.log('✅ [GROWTH] === AI REPLY CALLBACK SUCCESS ===');
+
+    // Respond to n8n
+    res.status(201).json({ 
+      success: true,
+      message: 'AI reply draft saved successfully',
+      data: {
+        taskId: taskId,
+        draftId: aiReplyDraft.id,
+        contactId: contactId,
+        subject: replySubject,
+        status: 'draft_ready'
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ [GROWTH] === AI REPLY CALLBACK ERROR ===');
+    console.error('❌ [GROWTH] Error processing AI reply callback:', error);
+    console.error('❌ [GROWTH] Error stack:', error.stack);
     
     res.status(500).json({ 
-      error: 'Failed to generate AI reply',
-      message: 'Internal server error while generating AI reply.',
+      success: false,
+      error: 'Failed to save AI reply draft',
+      message: 'Internal server error while processing the AI reply callback.',
       details: error.message 
     });
   }
