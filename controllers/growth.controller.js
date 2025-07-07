@@ -1717,4 +1717,151 @@ exports.updateEmailAsSent = async (req, res) => {
       details: error.message 
     });
   }
+};
+
+/**
+ * 📧 PROCESS EMAIL EVENT: Handle incoming email events from Resend via n8n webhook
+ * Called by n8n workflow when email events occur (replied, bounced, etc.)
+ * Uses n8n authentication (API key).
+ */
+exports.processEmailEvent = async (req, res) => {
+  console.log('📧 [GROWTH] === PROCESS EMAIL EVENT REQUEST ===');
+  
+  try {
+    const event = req.body;
+    
+    if (!event || !event.type) {
+      console.log('❌ [GROWTH] Missing event type in request body');
+      return res.status(400).json({ 
+        error: 'Missing event type',
+        message: 'Event type is required',
+        received: event
+      });
+    }
+
+    console.log(`📧 [GROWTH] Processing email event: ${event.type}`);
+    console.log(`📧 [GROWTH] Event data:`, {
+      type: event.type,
+      hasData: !!event.data,
+      emailId: event.data?.email_id || 'Not provided'
+    });
+
+    if (event.type === 'email.replied') {
+      console.log(`📧 [GROWTH] Processing email reply event for message ID: ${event.data?.email_id}`);
+      
+      if (!event.data?.email_id) {
+        console.log('❌ [GROWTH] Missing email_id in reply event data');
+        return res.status(400).json({ 
+          error: 'Missing email_id in event data',
+          eventType: event.type
+        });
+      }
+
+      // Find the original email by service message ID
+      const originalEmail = await prisma.outreachEmail.findFirst({
+        where: { serviceMessageId: event.data.email_id },
+        include: { 
+          targetContact: {
+            include: {
+              discoveredSupplier: {
+                include: {
+                  discoveredBrand: {
+                    include: {
+                      campaign: true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (!originalEmail) {
+        console.log(`❌ [GROWTH] Original email not found for service message ID: ${event.data.email_id}`);
+        return res.status(404).json({ 
+          error: 'Original email not found',
+          serviceMessageId: event.data.email_id
+        });
+      }
+
+      console.log(`✅ [GROWTH] Found original email: ${originalEmail.subject}`);
+      console.log(`✅ [GROWTH] Contact: ${originalEmail.targetContact.name} at ${originalEmail.targetContact.discoveredSupplier.companyName}`);
+
+      // Update the email status if not already marked as replied
+      if (originalEmail.status !== 'REPLIED') {
+        await prisma.outreachEmail.update({
+          where: { id: originalEmail.id },
+          data: { status: 'REPLIED' }
+        });
+        console.log(`✅ [GROWTH] Updated email status to REPLIED: ${originalEmail.id}`);
+      }
+
+      // Check if a follow-up task already exists for this email
+      const existingTask = await prisma.followUpTask.findUnique({
+        where: { relatedEmailId: originalEmail.id }
+      });
+
+      if (!existingTask) {
+        // Create a high-priority follow-up task
+        const tenantId = originalEmail.targetContact.discoveredSupplier.discoveredBrand.campaign.tenantId;
+        
+        const followUpTask = await prisma.followUpTask.create({
+          data: {
+            tenantId: tenantId,
+            title: `Reply from: ${originalEmail.targetContact.name}`,
+            notes: `Received a reply to the email with subject: "${originalEmail.subject}". Contact: ${originalEmail.targetContact.name} at ${originalEmail.targetContact.discoveredSupplier.companyName}. Original message ID: ${originalEmail.serviceMessageId}`,
+            priority: 'HIGH',
+            status: 'TODO',
+            relatedEmailId: originalEmail.id,
+            relatedContactId: originalEmail.targetContactId
+          }
+        });
+
+        console.log(`✅ [GROWTH] Created follow-up task: ${followUpTask.id}`);
+        console.log(`✅ [GROWTH] Task title: ${followUpTask.title}`);
+      } else {
+        console.log(`ℹ️ [GROWTH] Follow-up task already exists for email: ${originalEmail.id}`);
+      }
+
+    } else if (event.type === 'email.bounced') {
+      console.log(`📧 [GROWTH] Processing email bounce event for message ID: ${event.data?.email_id}`);
+      
+      if (!event.data?.email_id) {
+        console.log('❌ [GROWTH] Missing email_id in bounce event data');
+        return res.status(400).json({ 
+          error: 'Missing email_id in event data',
+          eventType: event.type
+        });
+      }
+
+      // Handle bounced emails - update status to FAILED
+      const updatedEmails = await prisma.outreachEmail.updateMany({
+        where: { serviceMessageId: event.data.email_id },
+        data: { status: 'FAILED' }
+      });
+
+      console.log(`✅ [GROWTH] Updated ${updatedEmails.count} email(s) to FAILED status for bounce event`);
+
+    } else {
+      console.log(`ℹ️ [GROWTH] Unhandled event type: ${event.type}`);
+      // For other event types, we just acknowledge receipt but don't process
+    }
+
+    console.log('✅ [GROWTH] === PROCESS EMAIL EVENT SUCCESS ===');
+    res.status(200).json({ 
+      message: 'Event processed successfully',
+      eventType: event.type,
+      processed: true
+    });
+
+  } catch (error) {
+    console.error('❌ [GROWTH] === PROCESS EMAIL EVENT ERROR ===');
+    console.error('❌ [GROWTH] Error processing email event:', error);
+    console.error('❌ [GROWTH] Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to process email event',
+      details: error.message 
+    });
+  }
 }; 

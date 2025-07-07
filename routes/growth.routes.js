@@ -777,6 +777,68 @@ router.patch('/outreach-emails/:emailId/sent', n8nAuthMiddleware, updateEmailAsS
 
 /**
  * @swagger
+ * /growth/email-events:
+ *   post:
+ *     summary: Process incoming email events from Resend via n8n webhook (n8n only)
+ *     tags: [Growth Engine]
+ *     security:
+ *       - apiKeyAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - type
+ *             properties:
+ *               type:
+ *                 type: string
+ *                 description: Event type (e.g., 'email.replied', 'email.bounced')
+ *                 example: 'email.replied'
+ *               data:
+ *                 type: object
+ *                 properties:
+ *                   email_id:
+ *                     type: string
+ *                     description: Service message ID from email provider
+ *                     example: 'resend-message-id-123'
+ *                   recipient:
+ *                     type: string
+ *                     description: Recipient email address
+ *                   subject:
+ *                     type: string
+ *                     description: Email subject
+ *     responses:
+ *       200:
+ *         description: Event processed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   description: Success message
+ *                 eventType:
+ *                   type: string
+ *                   description: Processed event type
+ *                 processed:
+ *                   type: boolean
+ *                   description: Whether the event was processed
+ *       400:
+ *         description: Invalid event data
+ *       401:
+ *         description: Unauthorized (invalid API key)
+ *       404:
+ *         description: Original email not found
+ *       500:
+ *         description: Server error
+ */
+router.post('/email-events', n8nAuthMiddleware, growthController.processEmailEvent);
+
+/**
+ * @swagger
  * /growth/campaigns/{campaignId}/brands:
  *   post:
  *     summary: Save discovered brands from n8n workflow (n8n only)
