@@ -4430,7 +4430,6 @@ exports.sendAIReply = async (req, res) => {
       data: { 
         status: 'DONE',
         priority: 'LOW', // Lower priority since task is completed
-        completedAt: new Date(),
         notes: task.notes + `\n\n--- AI REPLY SENT ---\nSent at: ${new Date().toISOString()}\nEmail ID: ${emailId}`,
         updatedAt: new Date()
       }
