@@ -4060,13 +4060,6 @@ exports.handleAIReplyCallback = async (req, res) => {
       });
     }
 
-    if (!contactId) {
-      console.error('❌ [GROWTH] Missing contactId in callback');
-      return res.status(400).json({ 
-        error: 'Missing required field: contactId' 
-      });
-    }
-
     if (!aiReply) {
       console.error('❌ [GROWTH] Missing aiReply in callback');
       return res.status(400).json({ 
@@ -4074,7 +4067,7 @@ exports.handleAIReplyCallback = async (req, res) => {
       });
     }
 
-    // Fetch the task to verify it exists
+    // Fetch the task to verify it exists and get contactId if not provided
     const task = await prisma.followUpTask.findUnique({
       where: { id: taskId },
       include: {
@@ -4091,13 +4084,24 @@ exports.handleAIReplyCallback = async (req, res) => {
       });
     }
 
+    // Use contactId from callback or derive from task
+    const actualContactId = contactId || task.relatedContactId;
+    
+    if (!actualContactId) {
+      console.error('❌ [GROWTH] No contactId in callback and task has no relatedContactId');
+      return res.status(400).json({ 
+        error: 'Cannot determine contact ID',
+        message: 'contactId not provided and task has no related contact.'
+      });
+    }
+
     // Generate a subject line if not provided
     const replySubject = subject || `Re: ${originalSubject || task.relatedEmail?.subject || 'Your Inquiry'}`;
 
     // Create the AI-generated reply draft as an OutreachEmail
     const aiReplyDraft = await prisma.outreachEmail.create({
       data: {
-        targetContactId: contactId,
+        targetContactId: actualContactId,
         subject: replySubject,
         body: aiReply,
         status: 'DRAFT', // This is an AI-generated draft
@@ -4108,7 +4112,7 @@ exports.handleAIReplyCallback = async (req, res) => {
 
     console.log('✅ [GROWTH] AI reply draft created:', {
       draftId: aiReplyDraft.id,
-      contactId: contactId,
+      contactId: actualContactId,
       subject: replySubject,
       bodyLength: aiReply.length
     });
@@ -4138,7 +4142,7 @@ exports.handleAIReplyCallback = async (req, res) => {
       data: {
         taskId: taskId,
         draftId: aiReplyDraft.id,
-        contactId: contactId,
+        contactId: actualContactId,
         subject: replySubject,
         status: 'draft_ready'
       }

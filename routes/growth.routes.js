@@ -1385,7 +1385,6 @@ router.post('/tasks/:taskId/generate-reply', verifyToken, growthController.gener
  *             type: object
  *             required:
  *               - taskId
- *               - contactId
  *               - aiReply
  *             properties:
  *               taskId:
@@ -1395,7 +1394,7 @@ router.post('/tasks/:taskId/generate-reply', verifyToken, growthController.gener
  *               contactId:
  *                 type: string
  *                 format: uuid
- *                 description: Target contact ID for the reply
+ *                 description: Target contact ID for the reply (optional - can be derived from task)
  *               aiReply:
  *                 type: string
  *                 description: AI-generated reply body
@@ -1437,7 +1436,7 @@ router.post('/tasks/:taskId/generate-reply', verifyToken, growthController.gener
  *                     status:
  *                       type: string
  *       400:
- *         description: Missing required fields
+ *         description: Missing required fields or cannot determine contact ID
  *       404:
  *         description: Task not found
  *       500:
