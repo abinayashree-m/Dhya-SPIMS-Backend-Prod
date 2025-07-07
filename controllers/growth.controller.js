@@ -164,7 +164,7 @@ exports.triggerPersonaGeneration = async (req, res) => {
       personaData: personaData,
       tenantId: tenantId, // Pass the secure tenantId to the workflow
     }, {
-      timeout: 30000, // 30 second timeout
+      timeout: 100000, // 30 second timeout
       headers: {
         'Content-Type': 'application/json',
         'User-Agent': 'Texintelli-SPIMS/1.0'
@@ -508,7 +508,7 @@ exports.createGrowthCampaign = async (req, res) => {
             'Content-Type': 'application/json',
             'X-API-Key': process.env.N8N_API_KEY
           },
-          timeout: 10000 // 10 second timeout
+          timeout: 100000 // 10 second timeout
         });
 
         console.log(`✅ [GROWTH] n8n workflow triggered successfully:`, {
@@ -3193,7 +3193,7 @@ exports.triggerEmailSend = async (req, res) => {
       emailId: emailId,
       tenantId: tenantId
     }, {
-      timeout: 30000, // 30 second timeout
+      timeout: 100000, // 30 second timeout
       headers: {
         'Content-Type': 'application/json',
         'User-Agent': 'Texintelli-SPIMS/1.0'
@@ -3977,12 +3977,19 @@ exports.generateAIReply = async (req, res) => {
 
     // Make the request to n8n and wait for the response
     const axios = require('axios');
+    console.log('🔗 [GROWTH] Making request to n8n webhook:', n8nWebhookUrl);
+    
+    const startTime = Date.now();
     const n8nResponse = await axios.post(n8nWebhookUrl, contextBundle, {
-      timeout: 30000, // 30 second timeout
+      timeout: 100000, // Increased to 90 seconds for AI processing
       headers: {
         'Content-Type': 'application/json'
       }
     });
+    
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    console.log('⏱️ [GROWTH] n8n request completed in:', duration + 'ms');
 
     console.log('🤖 [GROWTH] n8n ReplyDrafter response:', {
       status: n8nResponse.status,
@@ -4014,7 +4021,17 @@ exports.generateAIReply = async (req, res) => {
     if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
       return res.status(408).json({ 
         error: 'Request timeout',
-        message: 'AI reply generation took too long. Please try again.'
+        message: 'AI reply generation took too long. This usually indicates the n8n workflow is not responding. Please check if the workflow is active and Google Gemini API is configured.',
+        details: {
+          webhookUrl: n8nWebhookUrl,
+          timeout: '90 seconds',
+          possibleCauses: [
+            'n8n workflow is not active',
+            'Google Gemini API is slow or misconfigured', 
+            'Network connectivity issues',
+            'Workflow has an error'
+          ]
+        }
       });
     }
     
