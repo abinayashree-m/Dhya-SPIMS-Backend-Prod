@@ -839,6 +839,61 @@ router.post('/email-events', n8nAuthMiddleware, growthController.processEmailEve
 
 /**
  * @swagger
+ * /growth/outreach-emails/{emailId}/send:
+ *   post:
+ *     summary: Trigger n8n EmailSender workflow to send an approved email draft
+ *     tags: [Growth Engine]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: emailId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Outreach Email ID to send
+ *     responses:
+ *       202:
+ *         description: Email sending process initiated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   description: Success message
+ *                 status:
+ *                   type: string
+ *                   description: Email status (queued)
+ *                 emailId:
+ *                   type: string
+ *                   description: Email ID
+ *                 subject:
+ *                   type: string
+ *                   description: Email subject
+ *                 recipient:
+ *                   type: string
+ *                   description: Recipient email address
+ *                 contactName:
+ *                   type: string
+ *                   description: Contact name
+ *       400:
+ *         description: Invalid request or email cannot be sent
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Email draft not found
+ *       500:
+ *         description: Server error
+ *       503:
+ *         description: Email service unavailable
+ */
+router.post('/outreach-emails/:emailId/send', verifyToken, growthController.triggerEmailSend);
+
+/**
+ * @swagger
  * /growth/campaigns/{campaignId}/brands:
  *   post:
  *     summary: Save discovered brands from n8n workflow (n8n only)

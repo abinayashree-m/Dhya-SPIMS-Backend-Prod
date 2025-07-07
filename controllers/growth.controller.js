@@ -1864,4 +1864,189 @@ exports.processEmailEvent = async (req, res) => {
       details: error.message 
     });
   }
+};
+
+/**
+ * 📤 TRIGGER EMAIL SEND: Trigger n8n EmailSender workflow to send an approved email draft
+ * Called by frontend when user clicks "Send" or "Approve & Send" button.
+ * Uses JWT authentication.
+ */
+exports.triggerEmailSend = async (req, res) => {
+  console.log('📤 [GROWTH] === TRIGGER EMAIL SEND REQUEST ===');
+  
+  try {
+    const { emailId } = req.params;
+    const tenantId = req.user?.tenantId;
+    
+    if (!tenantId) {
+      console.log('❌ [GROWTH] Missing tenant ID in token');
+      return res.status(400).json({ error: 'Missing tenant ID' });
+    }
+
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(emailId)) {
+      console.log(`❌ [GROWTH] Invalid UUID format for emailId: ${emailId}`);
+      return res.status(400).json({ 
+        error: 'Invalid emailId format',
+        message: 'emailId must be a valid UUID',
+        received: emailId
+      });
+    }
+
+    console.log(`📤 [GROWTH] Triggering email send for draft: ${emailId}, tenant: ${tenantId}`);
+
+    // First verify the email exists and belongs to the tenant
+    const email = await prisma.outreachEmail.findFirst({
+      where: { 
+        id: emailId,
+        targetContact: {
+          discoveredSupplier: {
+            discoveredBrand: {
+              campaign: {
+                tenantId: tenantId
+              }
+            }
+          }
+        }
+      },
+      include: {
+        targetContact: {
+          include: {
+            discoveredSupplier: {
+              include: {
+                discoveredBrand: {
+                  include: {
+                    campaign: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!email) {
+      console.log(`❌ [GROWTH] Email draft not found or unauthorized: ${emailId}`);
+      return res.status(404).json({ 
+        error: 'Email draft not found',
+        message: 'Email draft not found or you do not have permission to send it.'
+      });
+    }
+
+    if (email.status !== 'DRAFT') {
+      console.log(`❌ [GROWTH] Email is not in DRAFT status: ${email.status}`);
+      return res.status(400).json({ 
+        error: 'Email cannot be sent',
+        message: `Email is in ${email.status} status. Only DRAFT emails can be sent.`,
+        currentStatus: email.status
+      });
+    }
+
+    console.log(`✅ [GROWTH] Email draft found: ${email.subject}`);
+    console.log(`✅ [GROWTH] Recipient: ${email.targetContact.name} <${email.targetContact.email}>`);
+
+    // Get the n8n EmailSender webhook URL from environment variables
+    const n8nEmailSenderUrl = process.env.N8N_EMAILSENDER_WEBHOOK_URL;
+    console.log(`📤 [GROWTH] Environment check:`, {
+      hasEmailSenderUrl: !!n8nEmailSenderUrl,
+      urlPreview: n8nEmailSenderUrl ? n8nEmailSenderUrl.substring(0, 50) + '...' : 'None'
+    });
+    
+    if (!n8nEmailSenderUrl) {
+      console.error('❌ [GROWTH] N8N_EMAILSENDER_WEBHOOK_URL is not set');
+      return res.status(500).json({ 
+        message: 'Email sending service is not configured. Please contact support.' 
+      });
+    }
+
+    // Update email status to QUEUED before triggering n8n
+    await prisma.outreachEmail.update({
+      where: { id: emailId },
+      data: { status: 'QUEUED' }
+    });
+
+    console.log(`✅ [GROWTH] Updated email status to QUEUED: ${emailId}`);
+
+    // Trigger the n8n EmailSender workflow
+    console.log(`📡 [GROWTH] Preparing n8n EmailSender webhook call:`, {
+      url: n8nEmailSenderUrl,
+      emailId: emailId,
+      subject: email.subject,
+      recipient: email.targetContact.email
+    });
+    
+    const n8nResponse = await axios.post(n8nEmailSenderUrl, {
+      emailId: emailId,
+      tenantId: tenantId
+    }, {
+      timeout: 30000, // 30 second timeout
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'Texintelli-SPIMS/1.0'
+      }
+    });
+
+    console.log(`✅ [GROWTH] n8n EmailSender webhook called successfully:`, {
+      status: n8nResponse.status,
+      statusText: n8nResponse.statusText,
+      responseData: n8nResponse.data
+    });
+
+    // Respond to the frontend immediately to let it know the process has started
+    const responseData = {
+      message: 'Email sending process has been successfully initiated.',
+      status: 'queued',
+      emailId: emailId,
+      subject: email.subject,
+      recipient: email.targetContact.email,
+      contactName: email.targetContact.name
+    };
+    
+    console.log('✅ [GROWTH] Sending success response to frontend:', responseData);
+    console.log('✅ [GROWTH] === TRIGGER EMAIL SEND SUCCESS ===');
+    res.status(202).json(responseData);
+
+  } catch (error) {
+    console.error('❌ [GROWTH] === TRIGGER EMAIL SEND ERROR ===');
+    console.error('❌ [GROWTH] Error details:', {
+      message: error.message,
+      code: error.code,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      responseData: error.response?.data
+    });
+    console.error('❌ [GROWTH] Error stack:', error.stack);
+
+    // If there was an error, revert the email status back to DRAFT
+    try {
+      await prisma.outreachEmail.update({
+        where: { id: req.params.emailId },
+        data: { status: 'DRAFT' }
+      });
+      console.log(`🔄 [GROWTH] Reverted email status back to DRAFT: ${req.params.emailId}`);
+    } catch (revertError) {
+      console.error('❌ [GROWTH] Failed to revert email status:', revertError);
+    }
+
+    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+      return res.status(503).json({ 
+        error: 'Email sending service unavailable',
+        message: 'The email automation service is currently unavailable. Please try again later.'
+      });
+    }
+
+    if (error.code === 'ECONNABORTED') {
+      return res.status(408).json({ 
+        error: 'Email sending timeout',
+        message: 'The email sending request timed out. Please try again.'
+      });
+    }
+
+    res.status(500).json({ 
+      error: 'Failed to initiate email sending',
+      details: error.message 
+    });
+  }
 }; 
