@@ -4378,14 +4378,14 @@ exports.sendAIReply = async (req, res) => {
     console.log(`📤 [GROWTH] Email status updated to QUEUED: ${emailId}`);
 
     // Get the EmailSender webhook URL from environment
-    const emailSenderWebhookUrl = process.env.N8N_EMAIL_SENDER_WEBHOOK_URL;
+    const emailSenderWebhookUrl = process.env.N8N_EMAILSENDER_WEBHOOK_URL;
     console.log(`📤 [GROWTH] Environment check:`, {
       hasEmailSenderUrl: !!emailSenderWebhookUrl,
       webhookUrlPreview: emailSenderWebhookUrl ? emailSenderWebhookUrl.substring(0, 50) + '...' : 'None'
     });
     
     if (!emailSenderWebhookUrl) {
-      console.error('❌ [GROWTH] N8N_EMAIL_SENDER_WEBHOOK_URL is not set');
+      console.error('❌ [GROWTH] N8N_EMAILSENDER_WEBHOOK_URL is not set');
       
       // Revert email status back to DRAFT
       await prisma.outreachEmail.update({
