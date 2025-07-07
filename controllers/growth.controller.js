@@ -2803,6 +2803,263 @@ exports.getAnalyticsDashboard = async (req, res) => {
 };
 
 /**
+ * 🔍 FIND CONTACT BY EMAIL: Find a contact by email address for n8n workflows
+ * Called by n8n workflows to look up contacts before processing.
+ * Uses API key authentication.
+ */
+exports.findContactByEmail = async (req, res) => {
+  console.log('🔍 [GROWTH] === FIND CONTACT BY EMAIL REQUEST ===');
+  
+  try {
+    const { email } = req.query;
+    const { tenantId } = req.body;
+    
+    console.log('🔍 [GROWTH] Contact search request:', {
+      email: email,
+      tenantId: tenantId,
+      hasEmail: !!email,
+      hasTenantId: !!tenantId
+    });
+
+    if (!email || !tenantId) {
+      console.log('❌ [GROWTH] Missing required parameters');
+      return res.status(400).json({ 
+        error: 'Missing required parameters',
+        message: 'email (query parameter) and tenantId (body) are required.' 
+      });
+    }
+
+    // Find the contact in our database
+    const contact = await prisma.targetContact.findFirst({
+      where: {
+        email: email,
+        discoveredSupplier: {
+          discoveredBrand: {
+            campaign: {
+              tenantId: tenantId
+            }
+          }
+        }
+      },
+      include: {
+        discoveredSupplier: {
+          include: {
+            discoveredBrand: {
+              include: {
+                campaign: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    console.log('🔍 [GROWTH] Contact search result:', {
+      found: !!contact,
+      contactId: contact?.id,
+      contactName: contact?.name,
+      companyName: contact?.discoveredSupplier?.companyName,
+      campaignName: contact?.discoveredSupplier?.discoveredBrand?.campaign?.name
+    });
+
+    if (!contact) {
+      console.log('🔍 [GROWTH] Contact not found');
+      return res.status(404).json({ 
+        message: 'Contact not found',
+        email: email,
+        tenantId: tenantId
+      });
+    }
+
+    // Return contact details
+    const responseData = {
+      message: 'Contact found successfully',
+      contact: {
+        id: contact.id,
+        name: contact.name,
+        email: contact.email,
+        title: contact.title,
+        linkedinUrl: contact.linkedinUrl,
+        supplier: {
+          id: contact.discoveredSupplier.id,
+          companyName: contact.discoveredSupplier.companyName,
+          country: contact.discoveredSupplier.country,
+          specialization: contact.discoveredSupplier.specialization
+        },
+        brand: {
+          id: contact.discoveredSupplier.discoveredBrand.id,
+          companyName: contact.discoveredSupplier.discoveredBrand.companyName,
+          website: contact.discoveredSupplier.discoveredBrand.website
+        },
+        campaign: {
+          id: contact.discoveredSupplier.discoveredBrand.campaign.id,
+          name: contact.discoveredSupplier.discoveredBrand.campaign.name,
+          keywords: contact.discoveredSupplier.discoveredBrand.campaign.keywords
+        }
+      }
+    };
+
+    console.log('✅ [GROWTH] Contact found and returned successfully');
+    console.log('✅ [GROWTH] === FIND CONTACT BY EMAIL SUCCESS ===');
+    
+    res.status(200).json(responseData);
+
+  } catch (error) {
+    console.error('❌ [GROWTH] === FIND CONTACT BY EMAIL ERROR ===');
+    console.error('❌ [GROWTH] Error finding contact by email:', error);
+    console.error('❌ [GROWTH] Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to find contact',
+      message: 'Internal server error while searching for contact.',
+      details: error.message 
+    });
+  }
+};
+
+/**
+ * 📬 CREATE TASK FROM REPLY: Create a follow-up task when a reply is detected by n8n
+ * Called by n8n ReplyProcessor workflow when a reply is detected in the inbox.
+ * Uses API key authentication.
+ */
+exports.createTaskFromReply = async (req, res) => {
+  console.log('📬 [GROWTH] === CREATE TASK FROM REPLY REQUEST ===');
+  
+  try {
+    const { senderEmail, subject, tenantId } = req.body;
+    
+    console.log('📬 [GROWTH] Reply detection request:', {
+      senderEmail: senderEmail,
+      subject: subject,
+      tenantId: tenantId
+    });
+
+    if (!senderEmail || !subject || !tenantId) {
+      console.log('❌ [GROWTH] Missing required fields');
+      return res.status(400).json({ 
+        error: 'Missing required fields',
+        message: 'senderEmail, subject, and tenantId are required.' 
+      });
+    }
+
+    // Find the contact in our database who sent the email
+    const contact = await prisma.targetContact.findFirst({
+      where: {
+        email: senderEmail,
+        discoveredSupplier: {
+          discoveredBrand: {
+            campaign: {
+              tenantId: tenantId
+            }
+          }
+        }
+      },
+      include: {
+        discoveredSupplier: {
+          include: {
+            discoveredBrand: {
+              include: {
+                campaign: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    console.log('📬 [GROWTH] Contact search result:', {
+      found: !!contact,
+      contactId: contact?.id,
+      contactName: contact?.name,
+      companyName: contact?.discoveredSupplier?.companyName
+    });
+
+    // If the sender is not a known contact, we ignore it
+    if (!contact) {
+      console.log('📬 [GROWTH] Sender is not a tracked contact, ignoring reply');
+      return res.status(200).json({ 
+        message: 'Sender is not a tracked contact, task not created.',
+        senderEmail: senderEmail,
+        action: 'ignored'
+      });
+    }
+
+    // Find the last email we sent to this contact to link it to the task
+    const lastSentEmail = await prisma.outreachEmail.findFirst({
+      where: { 
+        targetContactId: contact.id, 
+        status: 'SENT' 
+      },
+      orderBy: { sentAt: 'desc' }
+    });
+
+    console.log('📬 [GROWTH] Last sent email:', {
+      found: !!lastSentEmail,
+      emailId: lastSentEmail?.id,
+      subject: lastSentEmail?.subject,
+      sentAt: lastSentEmail?.sentAt
+    });
+
+    // Create the high-priority follow-up task
+    const followUpTask = await prisma.followUpTask.create({
+      data: {
+        tenantId: tenantId,
+        title: `Reply received from: ${contact.name}`,
+        notes: `Regarding email with subject: "${lastSentEmail?.subject || subject}"\n\nContact: ${contact.name} (${contact.email})\nCompany: ${contact.discoveredSupplier.companyName}\nCampaign: ${contact.discoveredSupplier.discoveredBrand.campaign.name}`,
+        priority: 'HIGH',
+        status: 'TODO',
+        relatedContactId: contact.id,
+        relatedEmailId: lastSentEmail?.id // Link to the original email if found
+      }
+    });
+
+    console.log('📬 [GROWTH] Follow-up task created:', {
+      taskId: followUpTask.id,
+      title: followUpTask.title,
+      priority: followUpTask.priority
+    });
+    
+    // Finally, update the status of the original email to REPLIED
+    if (lastSentEmail) {
+      await prisma.outreachEmail.update({
+        where: { id: lastSentEmail.id },
+        data: { status: 'REPLIED' }
+      });
+      
+      console.log('📬 [GROWTH] Email status updated to REPLIED:', {
+        emailId: lastSentEmail.id,
+        newStatus: 'REPLIED'
+      });
+    }
+
+    console.log('✅ [GROWTH] Reply processing completed successfully');
+    console.log('✅ [GROWTH] === CREATE TASK FROM REPLY SUCCESS ===');
+
+    res.status(201).json({ 
+      message: 'Follow-up task created successfully.',
+      task: {
+        id: followUpTask.id,
+        title: followUpTask.title,
+        priority: followUpTask.priority,
+        contactName: contact.name,
+        companyName: contact.discoveredSupplier.companyName
+      },
+      emailUpdated: !!lastSentEmail,
+      originalEmailId: lastSentEmail?.id
+    });
+
+  } catch (error) {
+    console.error('❌ [GROWTH] === CREATE TASK FROM REPLY ERROR ===');
+    console.error('❌ [GROWTH] Error creating task from reply:', error);
+    console.error('❌ [GROWTH] Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to create task',
+      message: 'Internal server error while processing reply.',
+      details: error.message 
+    });
+  }
+};
+
+/**
  * 📤 TRIGGER EMAIL SEND: Trigger n8n EmailSender workflow to send an approved email draft
  * Called by frontend when user clicks "Send" or "Approve & Send" button.
  * Uses JWT authentication.

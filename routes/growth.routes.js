@@ -894,6 +894,212 @@ router.post('/outreach-emails/:emailId/send', verifyToken, growthController.trig
 
 /**
  * @swagger
+ * /growth/contacts/find-by-email:
+ *   get:
+ *     summary: Find a contact by email address for n8n workflows
+ *     tags: [Growth Engine]
+ *     security:
+ *       - apiKeyAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: email
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: email
+ *         description: Email address to search for
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - tenantId
+ *             properties:
+ *               tenantId:
+ *                 type: string
+ *                 format: uuid
+ *                 description: Tenant ID for the organization
+ *     responses:
+ *       200:
+ *         description: Contact found successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   description: Success message
+ *                 contact:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       description: Contact ID
+ *                     name:
+ *                       type: string
+ *                       description: Contact name
+ *                     email:
+ *                       type: string
+ *                       description: Contact email
+ *                     title:
+ *                       type: string
+ *                       description: Contact job title
+ *                     linkedinUrl:
+ *                       type: string
+ *                       description: LinkedIn profile URL
+ *                     supplier:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: string
+ *                         companyName:
+ *                           type: string
+ *                         country:
+ *                           type: string
+ *                         specialization:
+ *                           type: string
+ *                     brand:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: string
+ *                         companyName:
+ *                           type: string
+ *                         website:
+ *                           type: string
+ *                     campaign:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: string
+ *                         name:
+ *                           type: string
+ *                         keywords:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *       404:
+ *         description: Contact not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   description: Not found message
+ *                 email:
+ *                   type: string
+ *                   description: Email that was searched
+ *                 tenantId:
+ *                   type: string
+ *                   description: Tenant ID
+ *       400:
+ *         description: Missing required parameters
+ *       401:
+ *         description: Unauthorized - invalid API key
+ *       500:
+ *         description: Server error
+ */
+router.get('/contacts/find-by-email', n8nAuthMiddleware, growthController.findContactByEmail);
+
+/**
+ * @swagger
+ * /growth/tasks/create-from-reply:
+ *   post:
+ *     summary: Create a follow-up task when a reply is detected by n8n
+ *     tags: [Growth Engine]
+ *     security:
+ *       - apiKeyAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - senderEmail
+ *               - subject
+ *               - tenantId
+ *             properties:
+ *               senderEmail:
+ *                 type: string
+ *                 format: email
+ *                 description: Email address of the reply sender
+ *               subject:
+ *                 type: string
+ *                 description: Subject line of the reply email
+ *               tenantId:
+ *                 type: string
+ *                 format: uuid
+ *                 description: Tenant ID for the organization
+ *     responses:
+ *       201:
+ *         description: Follow-up task created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   description: Success message
+ *                 task:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       description: Task ID
+ *                     title:
+ *                       type: string
+ *                       description: Task title
+ *                     priority:
+ *                       type: string
+ *                       enum: [LOW, MEDIUM, HIGH, URGENT]
+ *                       description: Task priority
+ *                     contactName:
+ *                       type: string
+ *                       description: Contact name
+ *                     companyName:
+ *                       type: string
+ *                       description: Company name
+ *                 emailUpdated:
+ *                   type: boolean
+ *                   description: Whether original email status was updated
+ *                 originalEmailId:
+ *                   type: string
+ *                   description: ID of the original email that was replied to
+ *       200:
+ *         description: Reply from non-tracked contact, task not created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   description: Information message
+ *                 senderEmail:
+ *                   type: string
+ *                   description: Email address of the sender
+ *                 action:
+ *                   type: string
+ *                   enum: [ignored]
+ *                   description: Action taken
+ *       400:
+ *         description: Missing required fields
+ *       401:
+ *         description: Unauthorized - invalid API key
+ *       500:
+ *         description: Server error
+ */
+router.post('/tasks/create-from-reply', n8nAuthMiddleware, growthController.createTaskFromReply);
+
+/**
+ * @swagger
  * /growth/outreach-emails/{emailId}/resend:
  *   post:
  *     summary: Create a new draft copy of an existing email for resending
