@@ -1373,6 +1373,123 @@ router.post('/tasks/:taskId/generate-reply', verifyToken, growthController.gener
 
 /**
  * @swagger
+ * /growth/tasks/{taskId}/ai-draft:
+ *   get:
+ *     summary: Get AI-generated draft content for a task
+ *     tags: [Growth Engine - Tasks]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Task ID to get AI draft for
+ *     responses:
+ *       200:
+ *         description: AI draft content retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 draftId:
+ *                   type: string
+ *                   description: AI draft ID
+ *                 subject:
+ *                   type: string
+ *                   description: AI-generated subject line
+ *                 body:
+ *                   type: string
+ *                   description: AI-generated email body
+ *                 createdAt:
+ *                   type: string
+ *                   format: date-time
+ *                   description: When the draft was created
+ *                 contact:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     name:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ *                     companyName:
+ *                       type: string
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Task not found or no AI draft available
+ *       500:
+ *         description: Server error
+ */
+router.get('/tasks/:taskId/ai-draft', verifyToken, growthController.getAIDraft);
+
+/**
+ * @swagger
+ * /growth/tasks/{taskId}/send-reply:
+ *   post:
+ *     summary: Send AI-generated reply through existing EmailSender workflow
+ *     tags: [Growth Engine]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Task ID with AI-generated reply draft to send
+ *     responses:
+ *       200:
+ *         description: AI reply sent successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "AI reply sent successfully"
+ *                 status:
+ *                   type: string
+ *                   example: "sent"
+ *                 emailId:
+ *                   type: string
+ *                   format: uuid
+ *                   description: Email ID that was sent
+ *                 subject:
+ *                   type: string
+ *                   description: Email subject
+ *                 recipient:
+ *                   type: string
+ *                   description: Recipient email address
+ *                 contactName:
+ *                   type: string
+ *                   description: Recipient name
+ *                 taskId:
+ *                   type: string
+ *                   format: uuid
+ *                   description: Task ID that was completed
+ *       400:
+ *         description: Bad request - No AI draft found or email already sent
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Cannot access this draft
+ *       404:
+ *         description: Task not found or AI draft not found
+ *       500:
+ *         description: Server error - Email service not configured or sending failed
+ */
+router.post('/tasks/:taskId/send-reply', verifyToken, growthController.sendAIReply);
+
+/**
+ * @swagger
  * /growth/ai-reply-callback:
  *   post:
  *     summary: Callback endpoint for n8n to deliver completed AI reply drafts
@@ -1946,5 +2063,65 @@ router.post('/campaigns/:campaignId/brands', n8nAuthMiddleware, growthController
  *         description: Server error
  */
 router.get('/internal/persona/:tenantId', n8nAuthMiddleware, growthController.getPersonaForService);
+
+/**
+ * @swagger
+ * /growth/tasks/{taskId}/send-reply:
+ *   post:
+ *     summary: Send AI-generated reply through existing EmailSender workflow
+ *     tags: [Growth Engine]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Task ID with AI-generated reply draft to send
+ *     responses:
+ *       200:
+ *         description: AI reply sent successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "AI reply sent successfully"
+ *                 status:
+ *                   type: string
+ *                   example: "sent"
+ *                 emailId:
+ *                   type: string
+ *                   format: uuid
+ *                   description: Email ID that was sent
+ *                 subject:
+ *                   type: string
+ *                   description: Email subject
+ *                 recipient:
+ *                   type: string
+ *                   description: Recipient email address
+ *                 contactName:
+ *                   type: string
+ *                   description: Recipient name
+ *                 taskId:
+ *                   type: string
+ *                   format: uuid
+ *                   description: Task ID that was completed
+ *       400:
+ *         description: Bad request - No AI draft found or email already sent
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Cannot access this draft
+ *       404:
+ *         description: Task not found or AI draft not found
+ *       500:
+ *         description: Server error - Email service not configured or sending failed
+ */
+router.post('/tasks/:taskId/send-reply', verifyToken, growthController.sendAIReply);
 
 module.exports = router; 

@@ -4161,3 +4161,335 @@ exports.handleAIReplyCallback = async (req, res) => {
     });
   }
 };
+
+/**
+ * 📄 GET AI DRAFT: Get AI-generated draft content
+ * Fetches the AI-generated draft content from OutreachEmail table.
+ * Called by the frontend when viewing AI drafts.
+ */
+exports.getAIDraft = async (req, res) => {
+  console.log('📄 [GROWTH] === GET AI DRAFT REQUEST ===');
+  
+  try {
+    const { taskId } = req.params;
+    const tenantId = req.user.tenantId;
+
+    console.log('📄 [GROWTH] Getting AI draft for task:', {
+      taskId: taskId,
+      tenantId: tenantId
+    });
+
+    // First fetch the task to get the draft ID from the description
+    const task = await prisma.followUpTask.findFirst({
+      where: { 
+        id: taskId,
+        tenantId: tenantId
+      }
+    });
+
+    if (!task) {
+      console.log(`❌ [GROWTH] Task not found: ${taskId}`);
+      return res.status(404).json({ 
+        error: 'Task not found',
+        message: 'Task not found or you do not have permission to access it.'
+      });
+    }
+
+    // Extract draft ID from task description
+    const draftIdMatch = task.notes?.match(/Draft ID: ([a-f0-9-]+)/);
+    if (!draftIdMatch) {
+      console.log(`❌ [GROWTH] No draft ID found in task: ${taskId}`);
+      return res.status(404).json({ 
+        error: 'No AI draft found',
+        message: 'No AI draft has been generated for this task yet.'
+      });
+    }
+
+    const draftId = draftIdMatch[1];
+    console.log(`📄 [GROWTH] Found draft ID: ${draftId}`);
+
+    // Fetch the AI draft from OutreachEmail
+    const aiDraft = await prisma.outreachEmail.findUnique({
+      where: { id: draftId },
+      include: {
+        targetContact: {
+          include: {
+            discoveredSupplier: {
+              include: {
+                discoveredBrand: {
+                  include: {
+                    campaign: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!aiDraft) {
+      console.log(`❌ [GROWTH] AI draft not found: ${draftId}`);
+      return res.status(404).json({ 
+        error: 'AI draft not found',
+        message: 'The AI draft could not be found in the database.'
+      });
+    }
+
+    // Verify the draft belongs to the same tenant
+    if (aiDraft.targetContact.discoveredSupplier.discoveredBrand.campaign.tenantId !== tenantId) {
+      console.log(`❌ [GROWTH] Unauthorized access to draft: ${draftId}`);
+      return res.status(403).json({ 
+        error: 'Unauthorized access',
+        message: 'You do not have permission to access this draft.'
+      });
+    }
+
+    console.log(`✅ [GROWTH] AI draft retrieved: ${draftId}`);
+    console.log('✅ [GROWTH] === GET AI DRAFT SUCCESS ===');
+
+    res.status(200).json({
+      draftId: aiDraft.id,
+      subject: aiDraft.subject,
+      body: aiDraft.body,
+      createdAt: aiDraft.createdAt,
+      contact: {
+        id: aiDraft.targetContact.id,
+        name: aiDraft.targetContact.name,
+        email: aiDraft.targetContact.email,
+        companyName: aiDraft.targetContact.discoveredSupplier.companyName
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ [GROWTH] === GET AI DRAFT ERROR ===');
+    console.error('❌ [GROWTH] Error fetching AI draft:', error);
+    console.error('❌ [GROWTH] Error stack:', error.stack);
+    
+    res.status(500).json({ 
+      error: 'Failed to fetch AI draft',
+      message: 'Internal server error while fetching AI draft.',
+      details: error.message 
+    });
+  }
+};
+
+/**
+ * 📤 SEND AI REPLY: Send AI-generated reply through existing EmailSender workflow
+ * This endpoint extracts the AI draft from the task and triggers the existing 
+ * EmailSender workflow in n8n to send the approved reply.
+ */
+exports.sendAIReply = async (req, res) => {
+  console.log('📤 [GROWTH] === SEND AI REPLY REQUEST ===');
+  
+  try {
+    const { taskId } = req.params;
+    const tenantId = req.user.tenantId;
+
+    console.log('📤 [GROWTH] Sending AI reply for task:', {
+      taskId: taskId,
+      tenantId: tenantId
+    });
+
+    // First fetch the task to get the draft ID
+    const task = await prisma.followUpTask.findFirst({
+      where: { 
+        id: taskId,
+        tenantId: tenantId
+      }
+    });
+
+    if (!task) {
+      console.log(`❌ [GROWTH] Task not found: ${taskId}`);
+      return res.status(404).json({ 
+        error: 'Task not found',
+        message: 'Task not found or you do not have permission to access it.'
+      });
+    }
+
+    // Extract draft ID from task description
+    const draftIdMatch = task.notes?.match(/Draft ID: ([a-f0-9-]+)/);
+    if (!draftIdMatch) {
+      console.log(`❌ [GROWTH] No draft ID found in task: ${taskId}`);
+      return res.status(404).json({ 
+        error: 'No AI draft found',
+        message: 'No AI draft has been generated for this task yet. Please generate a draft first.'
+      });
+    }
+
+    const emailId = draftIdMatch[1];
+    console.log(`📤 [GROWTH] Found email draft ID: ${emailId}`);
+
+    // Fetch the email draft to verify it exists and get details
+    const emailDraft = await prisma.outreachEmail.findUnique({
+      where: { id: emailId },
+      include: {
+        targetContact: {
+          include: {
+            discoveredSupplier: {
+              include: {
+                discoveredBrand: {
+                  include: {
+                    campaign: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!emailDraft) {
+      console.log(`❌ [GROWTH] Email draft not found: ${emailId}`);
+      return res.status(404).json({ 
+        error: 'AI draft not found',
+        message: 'The AI draft could not be found in the database.'
+      });
+    }
+
+    // Verify the draft belongs to the same tenant
+    if (emailDraft.targetContact.discoveredSupplier.discoveredBrand.campaign.tenantId !== tenantId) {
+      console.log(`❌ [GROWTH] Unauthorized access to draft: ${emailId}`);
+      return res.status(403).json({ 
+        error: 'Unauthorized access',
+        message: 'You do not have permission to send this draft.'
+      });
+    }
+
+    // Check if email is already sent
+    if (emailDraft.status === 'SENT') {
+      console.log(`❌ [GROWTH] Email already sent: ${emailId}`);
+      return res.status(400).json({ 
+        error: 'Email already sent',
+        message: 'This reply has already been sent.'
+      });
+    }
+
+    // Update email status to QUEUED before sending
+    await prisma.outreachEmail.update({
+      where: { id: emailId },
+      data: { 
+        status: 'QUEUED',
+        updatedAt: new Date()
+      }
+    });
+
+    console.log(`📤 [GROWTH] Email status updated to QUEUED: ${emailId}`);
+
+    // Get the EmailSender webhook URL from environment
+    const emailSenderWebhookUrl = process.env.N8N_EMAIL_SENDER_WEBHOOK_URL;
+    console.log(`📤 [GROWTH] Environment check:`, {
+      hasEmailSenderUrl: !!emailSenderWebhookUrl,
+      webhookUrlPreview: emailSenderWebhookUrl ? emailSenderWebhookUrl.substring(0, 50) + '...' : 'None'
+    });
+    
+    if (!emailSenderWebhookUrl) {
+      console.error('❌ [GROWTH] N8N_EMAIL_SENDER_WEBHOOK_URL is not set');
+      
+      // Revert email status back to DRAFT
+      await prisma.outreachEmail.update({
+        where: { id: emailId },
+        data: { 
+          status: 'DRAFT',
+          updatedAt: new Date()
+        }
+      });
+      
+      return res.status(500).json({ 
+        error: 'Email service not configured',
+        message: 'Email sending service is not configured. Please contact support.' 
+      });
+    }
+
+    // Trigger the existing EmailSender workflow with the email ID
+    console.log(`📡 [GROWTH] Triggering EmailSender workflow:`, {
+      url: emailSenderWebhookUrl,
+      emailId: emailId
+    });
+    
+    const n8nResponse = await axios.post(emailSenderWebhookUrl, {
+      emailId: emailId
+    }, {
+      timeout: 30000, // 30 second timeout
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'Texintelli-SPIMS/1.0'
+      }
+    });
+
+    console.log(`✅ [GROWTH] EmailSender webhook called successfully:`, {
+      status: n8nResponse.status,
+      statusText: n8nResponse.statusText,
+      responseData: n8nResponse.data
+    });
+
+    // Mark the task as completed
+    await prisma.followUpTask.update({
+      where: { id: taskId },
+      data: { 
+        status: 'DONE',
+        completedAt: new Date(),
+        notes: task.notes + `\n\n--- AI REPLY SENT ---\nSent at: ${new Date().toISOString()}\nEmail ID: ${emailId}`,
+        updatedAt: new Date()
+      }
+    });
+
+    console.log(`✅ [GROWTH] Task marked as completed: ${taskId}`);
+    console.log('✅ [GROWTH] === SEND AI REPLY SUCCESS ===');
+
+    // Return success response
+    res.status(200).json({
+      message: 'AI reply sent successfully',
+      status: 'sent',
+      emailId: emailId,
+      subject: emailDraft.subject,
+      recipient: emailDraft.targetContact.email || 'No email address',
+      contactName: emailDraft.targetContact.name,
+      taskId: taskId
+    });
+
+  } catch (error) {
+    console.error('❌ [GROWTH] === SEND AI REPLY ERROR ===');
+    console.error('❌ [GROWTH] Error sending AI reply:', error);
+    console.error('❌ [GROWTH] Error details:', {
+      message: error.message,
+      code: error.code,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      responseData: error.response?.data
+    });
+    console.error('❌ [GROWTH] Error stack:', error.stack);
+    
+    // If there was an error, revert the email status back to DRAFT
+    if (req.params.taskId) {
+      try {
+        const task = await prisma.followUpTask.findUnique({
+          where: { id: req.params.taskId }
+        });
+        
+        if (task) {
+          const draftIdMatch = task.notes?.match(/Draft ID: ([a-f0-9-]+)/);
+          if (draftIdMatch) {
+            await prisma.outreachEmail.update({
+              where: { id: draftIdMatch[1] },
+              data: { 
+                status: 'DRAFT',
+                updatedAt: new Date()
+              }
+            });
+            console.log(`📤 [GROWTH] Reverted email status to DRAFT: ${draftIdMatch[1]}`);
+          }
+        }
+      } catch (revertError) {
+        console.error('❌ [GROWTH] Failed to revert email status:', revertError);
+      }
+    }
+    
+    res.status(500).json({ 
+      error: 'Failed to send AI reply',
+      message: 'Internal server error while sending AI reply.',
+      details: error.message 
+    });
+  }
+};
