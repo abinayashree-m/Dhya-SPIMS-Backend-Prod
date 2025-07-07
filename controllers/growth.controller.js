@@ -4357,13 +4357,12 @@ exports.sendAIReply = async (req, res) => {
       });
     }
 
-    // Check if email is already sent
-    if (emailDraft.status === 'SENT') {
-      console.log(`❌ [GROWTH] Email already sent: ${emailId}`);
-      return res.status(400).json({ 
-        error: 'Email already sent',
-        message: 'This reply has already been sent.'
-      });
+    // Check if email is already sent (allow resending)
+    const isResend = emailDraft.status === 'SENT';
+    if (isResend) {
+      console.log(`🔄 [GROWTH] Email already sent, proceeding with resend: ${emailId}`);
+    } else {
+      console.log(`📤 [GROWTH] Sending email for the first time: ${emailId}`);
     }
 
     // Update email status to QUEUED before sending
@@ -4425,12 +4424,13 @@ exports.sendAIReply = async (req, res) => {
     });
 
     // Mark the task as completed and lower priority
+    const replyAction = isResend ? 'RESENT' : 'SENT';
     await prisma.followUpTask.update({
       where: { id: taskId },
       data: { 
         status: 'DONE',
         priority: 'LOW', // Lower priority since task is completed
-        notes: task.notes + `\n\n--- AI REPLY SENT ---\nSent at: ${new Date().toISOString()}\nEmail ID: ${emailId}`,
+        notes: task.notes + `\n\n--- AI REPLY ${replyAction} ---\n${replyAction.charAt(0) + replyAction.slice(1).toLowerCase()} at: ${new Date().toISOString()}\nEmail ID: ${emailId}`,
         updatedAt: new Date()
       }
     });
@@ -4440,13 +4440,14 @@ exports.sendAIReply = async (req, res) => {
 
     // Return success response
     res.status(200).json({
-      message: 'AI reply sent successfully',
-      status: 'sent',
+      message: isResend ? 'AI reply resent successfully' : 'AI reply sent successfully',
+      status: isResend ? 'resent' : 'sent',
       emailId: emailId,
       subject: emailDraft.subject,
       recipient: emailDraft.targetContact.email || 'No email address',
       contactName: emailDraft.targetContact.name,
-      taskId: taskId
+      taskId: taskId,
+      isResend: isResend
     });
 
   } catch (error) {
