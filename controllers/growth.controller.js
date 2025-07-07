@@ -3884,11 +3884,7 @@ exports.generateAIReply = async (req, res) => {
               include: {
                 discoveredBrand: {
                   include: {
-                    campaign: {
-                      include: {
-                        companyPersona: true
-                      }
-                    }
+                    campaign: true
                   }
                 }
               }
@@ -3898,6 +3894,16 @@ exports.generateAIReply = async (req, res) => {
         relatedEmail: true
       }
     });
+
+    // Fetch company persona separately (it's related to tenant, not campaign)
+    let companyPersona = null;
+    try {
+      companyPersona = await prisma.companyPersona.findUnique({
+        where: { tenantId: tenantId }
+      });
+    } catch (error) {
+      console.log('ℹ️ [GROWTH] No company persona found for tenant:', tenantId);
+    }
 
     if (!task) {
       console.log(`❌ [GROWTH] Task not found: ${taskId}`);
@@ -3944,15 +3950,15 @@ exports.generateAIReply = async (req, res) => {
       
       // Company persona for context
       companyPersona: {
-        id: task.relatedContact?.discoveredSupplier?.discoveredBrand?.campaign?.companyPersona?.id || null,
-        summary: task.relatedContact?.discoveredSupplier?.discoveredBrand?.campaign?.companyPersona?.summary || 'Company persona not available'
+        id: companyPersona?.id || null,
+        summary: companyPersona?.executiveSummary || 'Company persona not available'
       }
     };
 
     console.log('🤖 [GROWTH] Prepared context bundle:', {
       hasOriginalEmail: !!contextBundle.originalEmail.body,
       hasReplyText: !!contextBundle.replyText,
-      hasPersona: !!contextBundle.companyPersona.summary,
+      hasPersona: !!companyPersona,
       contactName: contextBundle.contactName
     });
 
