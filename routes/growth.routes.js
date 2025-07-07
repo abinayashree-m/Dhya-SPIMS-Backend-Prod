@@ -1102,6 +1102,199 @@ router.get('/contacts/:contactId/suppression-status', verifyToken, growthControl
 
 /**
  * @swagger
+ * /growth/analytics/dashboard:
+ *   get:
+ *     summary: Get comprehensive analytics dashboard data
+ *     tags: [Growth Engine - Analytics]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: timeframe
+ *         schema:
+ *           type: string
+ *           enum: [7d, 30d, 90d, 1y]
+ *           default: 30d
+ *         description: Timeframe for recent activity analysis
+ *     responses:
+ *       200:
+ *         description: Analytics dashboard data retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 tenantId:
+ *                   type: string
+ *                 timeframe:
+ *                   type: string
+ *                 generatedAt:
+ *                   type: string
+ *                   format: date-time
+ *                 overview:
+ *                   type: object
+ *                   properties:
+ *                     totalCampaigns:
+ *                       type: integer
+ *                     totalBrands:
+ *                       type: integer
+ *                     totalSuppliers:
+ *                       type: integer
+ *                     totalContacts:
+ *                       type: integer
+ *                     totalEmails:
+ *                       type: integer
+ *                     totalEvents:
+ *                       type: integer
+ *                     activeContacts:
+ *                       type: integer
+ *                     suppressedContacts:
+ *                       type: integer
+ *                     pendingTasks:
+ *                       type: integer
+ *                 performance:
+ *                   type: object
+ *                   properties:
+ *                     emailsSent:
+ *                       type: integer
+ *                     emailsReplied:
+ *                       type: integer
+ *                     openRate:
+ *                       type: string
+ *                     clickRate:
+ *                       type: string
+ *                     replyRate:
+ *                       type: string
+ *                     bounceRate:
+ *                       type: string
+ *                 recentActivity:
+ *                   type: object
+ *                 topCampaigns:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                 breakdowns:
+ *                   type: object
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
+router.get('/analytics/dashboard', verifyToken, growthController.getAnalyticsDashboard);
+
+/**
+ * @swagger
+ * /growth/analytics/campaigns:
+ *   get:
+ *     summary: Get detailed campaign performance analytics
+ *     tags: [Growth Engine - Analytics]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Campaign analytics retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 tenantId:
+ *                   type: string
+ *                 generatedAt:
+ *                   type: string
+ *                   format: date-time
+ *                 overview:
+ *                   type: object
+ *                   properties:
+ *                     totalCampaigns:
+ *                       type: integer
+ *                     overallOpenRate:
+ *                       type: string
+ *                     overallClickRate:
+ *                       type: string
+ *                     overallReplyRate:
+ *                       type: string
+ *                 campaigns:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       campaignId:
+ *                         type: string
+ *                       campaignName:
+ *                         type: string
+ *                       metrics:
+ *                         type: object
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
+router.get('/analytics/campaigns', verifyToken, growthController.getCampaignAnalytics);
+
+/**
+ * @swagger
+ * /growth/analytics/growth-metrics:
+ *   get:
+ *     summary: Get growth metrics and time-series data
+ *     tags: [Growth Engine - Analytics]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: timeframe
+ *         schema:
+ *           type: string
+ *           enum: [7d, 30d, 90d, 1y]
+ *           default: 30d
+ *         description: Timeframe for growth analysis
+ *     responses:
+ *       200:
+ *         description: Growth metrics retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 tenantId:
+ *                   type: string
+ *                 timeframe:
+ *                   type: string
+ *                 startDate:
+ *                   type: string
+ *                   format: date-time
+ *                 endDate:
+ *                   type: string
+ *                   format: date-time
+ *                 timeSeries:
+ *                   type: object
+ *                   properties:
+ *                     campaigns:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           date:
+ *                             type: string
+ *                           count:
+ *                             type: integer
+ *                     contacts:
+ *                       type: array
+ *                     emails:
+ *                       type: array
+ *                     emailsSent:
+ *                       type: array
+ *                 summary:
+ *                   type: object
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
+router.get('/analytics/growth-metrics', verifyToken, growthController.getGrowthMetrics);
+
+/**
+ * @swagger
  * /growth/campaigns/{campaignId}/brands:
  *   post:
  *     summary: Save discovered brands from n8n workflow (n8n only)

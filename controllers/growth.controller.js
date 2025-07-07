@@ -2124,6 +2124,685 @@ exports.getEmailEngagementStats = async (req, res) => {
 };
 
 /**
+ * 📊 CAMPAIGN ANALYTICS: Get comprehensive campaign performance analytics
+ * Called by frontend analytics dashboard.
+ * Uses JWT authentication.
+ */
+exports.getCampaignAnalytics = async (req, res) => {
+  console.log('📊 [GROWTH] === GET CAMPAIGN ANALYTICS REQUEST ===');
+  
+  try {
+    const tenantId = req.user?.tenantId;
+    
+    if (!tenantId) {
+      console.log('❌ [GROWTH] Missing tenant ID in token');
+      return res.status(400).json({ error: 'Missing tenant ID' });
+    }
+
+    console.log(`📊 [GROWTH] Fetching campaign analytics for tenant: ${tenantId}`);
+
+    // Get all campaigns with detailed analytics
+    const campaigns = await prisma.growthCampaign.findMany({
+      where: { tenantId: tenantId },
+      include: {
+        discoveredBrands: {
+          include: {
+            discoveredSuppliers: {
+              include: {
+                targetContacts: {
+                  include: {
+                    outreachEmails: {
+                      include: {
+                        events: true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    // Calculate analytics for each campaign
+    const campaignAnalytics = campaigns.map(campaign => {
+      const brands = campaign.discoveredBrands || [];
+      const suppliers = brands.flatMap(b => b.discoveredSuppliers || []);
+      const contacts = suppliers.flatMap(s => s.targetContacts || []);
+      const emails = contacts.flatMap(c => c.outreachEmails || []);
+      const events = emails.flatMap(e => e.events || []);
+
+      // Email status counts
+      const sentEmails = emails.filter(e => e.status === 'SENT');
+      const repliedEmails = emails.filter(e => e.status === 'REPLIED');
+      const failedEmails = emails.filter(e => e.status === 'FAILED');
+      const queuedEmails = emails.filter(e => e.status === 'QUEUED');
+
+      // Engagement metrics
+      const openEvents = events.filter(e => e.type === 'OPENED');
+      const clickEvents = events.filter(e => e.type === 'CLICKED');
+      const uniqueOpens = [...new Set(openEvents.map(e => e.outreachEmailId))].length;
+      const uniqueClicks = [...new Set(clickEvents.map(e => e.outreachEmailId))].length;
+
+      // Contact status counts
+      const activeContacts = contacts.filter(c => c.status === 'ACTIVE');
+      const suppressedContacts = contacts.filter(c => c.status === 'DO_NOT_CONTACT');
+
+      return {
+        campaignId: campaign.id,
+        campaignName: campaign.name,
+        campaignStatus: campaign.status,
+        createdAt: campaign.createdAt,
+        updatedAt: campaign.updatedAt,
+        keywords: campaign.keywords,
+        metrics: {
+          // Discovery metrics
+          brandsDiscovered: brands.length,
+          suppliersIdentified: suppliers.length,
+          contactsEnriched: contacts.length,
+          
+          // Email metrics
+          totalEmails: emails.length,
+          emailsSent: sentEmails.length,
+          emailsReplied: repliedEmails.length,
+          emailsFailed: failedEmails.length,
+          emailsQueued: queuedEmails.length,
+          
+          // Engagement metrics
+          totalOpens: openEvents.length,
+          totalClicks: clickEvents.length,
+          uniqueOpens: uniqueOpens,
+          uniqueClicks: uniqueClicks,
+          
+          // Contact metrics
+          activeContacts: activeContacts.length,
+          suppressedContacts: suppressedContacts.length,
+          
+          // Rate calculations (avoid division by zero)
+          openRate: sentEmails.length > 0 ? (uniqueOpens / sentEmails.length * 100).toFixed(2) : '0.00',
+          clickRate: sentEmails.length > 0 ? (uniqueClicks / sentEmails.length * 100).toFixed(2) : '0.00',
+          replyRate: sentEmails.length > 0 ? (repliedEmails.length / sentEmails.length * 100).toFixed(2) : '0.00',
+          bounceRate: sentEmails.length > 0 ? (failedEmails.length / sentEmails.length * 100).toFixed(2) : '0.00'
+        }
+      };
+    });
+
+    // Calculate overall totals
+    const totals = campaignAnalytics.reduce((acc, campaign) => {
+      acc.totalCampaigns += 1;
+      acc.totalBrands += campaign.metrics.brandsDiscovered;
+      acc.totalSuppliers += campaign.metrics.suppliersIdentified;
+      acc.totalContacts += campaign.metrics.contactsEnriched;
+      acc.totalEmails += campaign.metrics.totalEmails;
+      acc.totalSent += campaign.metrics.emailsSent;
+      acc.totalReplies += campaign.metrics.emailsReplied;
+      acc.totalOpens += campaign.metrics.uniqueOpens;
+      acc.totalClicks += campaign.metrics.uniqueClicks;
+      acc.totalFailed += campaign.metrics.emailsFailed;
+      acc.activeContacts += campaign.metrics.activeContacts;
+      acc.suppressedContacts += campaign.metrics.suppressedContacts;
+      return acc;
+    }, {
+      totalCampaigns: 0,
+      totalBrands: 0,
+      totalSuppliers: 0,
+      totalContacts: 0,
+      totalEmails: 0,
+      totalSent: 0,
+      totalReplies: 0,
+      totalOpens: 0,
+      totalClicks: 0,
+      totalFailed: 0,
+      activeContacts: 0,
+      suppressedContacts: 0
+    });
+
+    // Calculate overall rates
+    const overallRates = {
+      overallOpenRate: totals.totalSent > 0 ? (totals.totalOpens / totals.totalSent * 100).toFixed(2) : '0.00',
+      overallClickRate: totals.totalSent > 0 ? (totals.totalClicks / totals.totalSent * 100).toFixed(2) : '0.00',
+      overallReplyRate: totals.totalSent > 0 ? (totals.totalReplies / totals.totalSent * 100).toFixed(2) : '0.00',
+      overallBounceRate: totals.totalSent > 0 ? (totals.totalFailed / totals.totalSent * 100).toFixed(2) : '0.00'
+    };
+
+    const analytics = {
+      tenantId: tenantId,
+      generatedAt: new Date().toISOString(),
+      overview: {
+        ...totals,
+        ...overallRates
+      },
+      campaigns: campaignAnalytics
+    };
+
+    console.log(`✅ [GROWTH] Campaign analytics retrieved for tenant: ${tenantId}`, {
+      totalCampaigns: totals.totalCampaigns,
+      totalContacts: totals.totalContacts,
+      totalEmails: totals.totalEmails,
+      overallReplyRate: overallRates.overallReplyRate + '%'
+    });
+    console.log('✅ [GROWTH] === GET CAMPAIGN ANALYTICS SUCCESS ===');
+    
+    res.status(200).json(analytics);
+
+  } catch (error) {
+    console.error('❌ [GROWTH] === GET CAMPAIGN ANALYTICS ERROR ===');
+    console.error(`❌ [GROWTH] Error fetching campaign analytics:`, error);
+    console.error('❌ [GROWTH] Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to fetch campaign analytics',
+      details: error.message 
+    });
+  }
+};
+
+/**
+ * 📈 GROWTH METRICS: Get growth metrics and time-series data
+ * Called by frontend analytics dashboard.
+ * Uses JWT authentication.
+ */
+exports.getGrowthMetrics = async (req, res) => {
+  console.log('📈 [GROWTH] === GET GROWTH METRICS REQUEST ===');
+  
+  try {
+    const tenantId = req.user?.tenantId;
+    const { timeframe = '30d' } = req.query; // 7d, 30d, 90d, 1y
+    
+    if (!tenantId) {
+      console.log('❌ [GROWTH] Missing tenant ID in token');
+      return res.status(400).json({ error: 'Missing tenant ID' });
+    }
+
+    console.log(`📈 [GROWTH] Fetching growth metrics for tenant: ${tenantId}, timeframe: ${timeframe}`);
+
+    // Calculate date range
+    const now = new Date();
+    let startDate = new Date();
+    
+    switch (timeframe) {
+      case '7d':
+        startDate.setDate(now.getDate() - 7);
+        break;
+      case '30d':
+        startDate.setDate(now.getDate() - 30);
+        break;
+      case '90d':
+        startDate.setDate(now.getDate() - 90);
+        break;
+      case '1y':
+        startDate.setFullYear(now.getFullYear() - 1);
+        break;
+      default:
+        startDate.setDate(now.getDate() - 30);
+    }
+
+    // Get time-series data for campaigns
+    const campaignTimeSeries = await prisma.growthCampaign.findMany({
+      where: { 
+        tenantId: tenantId,
+        createdAt: { gte: startDate }
+      },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        createdAt: true
+      },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    // Get time-series data for contacts
+    const contactTimeSeries = await prisma.targetContact.findMany({
+      where: {
+        discoveredSupplier: {
+          discoveredBrand: {
+            campaign: {
+              tenantId: tenantId
+            }
+          }
+        },
+        createdAt: { gte: startDate }
+      },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        createdAt: true,
+        discoveredSupplier: {
+          select: {
+            companyName: true,
+            discoveredBrand: {
+              select: {
+                campaign: {
+                  select: {
+                    name: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    // Get time-series data for emails
+    const emailTimeSeries = await prisma.outreachEmail.findMany({
+      where: {
+        targetContact: {
+          discoveredSupplier: {
+            discoveredBrand: {
+              campaign: {
+                tenantId: tenantId
+              }
+            }
+          }
+        },
+        createdAt: { gte: startDate }
+      },
+      select: {
+        id: true,
+        status: true,
+        subject: true,
+        createdAt: true,
+        sentAt: true
+      },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    // Generate daily aggregations
+    const getDailyData = (data, dateField = 'createdAt') => {
+      const dailyData = {};
+      
+      data.forEach(item => {
+        const date = new Date(item[dateField]).toISOString().split('T')[0];
+        if (!dailyData[date]) {
+          dailyData[date] = 0;
+        }
+        dailyData[date]++;
+      });
+
+      // Fill missing dates with 0
+      const current = new Date(startDate);
+      while (current <= now) {
+        const dateStr = current.toISOString().split('T')[0];
+        if (!dailyData[dateStr]) {
+          dailyData[dateStr] = 0;
+        }
+        current.setDate(current.getDate() + 1);
+      }
+
+      return Object.keys(dailyData)
+        .sort()
+        .map(date => ({
+          date,
+          count: dailyData[date]
+        }));
+    };
+
+    const growthMetrics = {
+      tenantId: tenantId,
+      timeframe: timeframe,
+      startDate: startDate.toISOString(),
+      endDate: now.toISOString(),
+      generatedAt: now.toISOString(),
+      
+      timeSeries: {
+        campaigns: getDailyData(campaignTimeSeries),
+        contacts: getDailyData(contactTimeSeries),
+        emails: getDailyData(emailTimeSeries),
+        emailsSent: getDailyData(emailTimeSeries.filter(e => e.sentAt), 'sentAt')
+      },
+      
+      summary: {
+        campaignsCreated: campaignTimeSeries.length,
+        contactsAcquired: contactTimeSeries.length,
+        emailsGenerated: emailTimeSeries.length,
+        emailsSent: emailTimeSeries.filter(e => e.sentAt).length,
+        
+        // Status breakdowns
+        campaignsByStatus: campaignTimeSeries.reduce((acc, c) => {
+          acc[c.status] = (acc[c.status] || 0) + 1;
+          return acc;
+        }, {}),
+        
+        contactsByStatus: contactTimeSeries.reduce((acc, c) => {
+          acc[c.status] = (acc[c.status] || 0) + 1;
+          return acc;
+        }, {}),
+        
+        emailsByStatus: emailTimeSeries.reduce((acc, e) => {
+          acc[e.status] = (acc[e.status] || 0) + 1;
+          return acc;
+        }, {})
+      }
+    };
+
+    console.log(`✅ [GROWTH] Growth metrics retrieved for tenant: ${tenantId}`, {
+      timeframe: timeframe,
+      campaignsCreated: growthMetrics.summary.campaignsCreated,
+      contactsAcquired: growthMetrics.summary.contactsAcquired,
+      emailsGenerated: growthMetrics.summary.emailsGenerated
+    });
+    console.log('✅ [GROWTH] === GET GROWTH METRICS SUCCESS ===');
+    
+    res.status(200).json(growthMetrics);
+
+  } catch (error) {
+    console.error('❌ [GROWTH] === GET GROWTH METRICS ERROR ===');
+    console.error(`❌ [GROWTH] Error fetching growth metrics:`, error);
+    console.error('❌ [GROWTH] Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to fetch growth metrics',
+      details: error.message 
+    });
+  }
+};
+
+/**
+ * 📊 ANALYTICS DASHBOARD: Get comprehensive analytics dashboard data
+ * Called by frontend analytics dashboard.
+ * Uses JWT authentication.
+ */
+exports.getAnalyticsDashboard = async (req, res) => {
+  console.log('📊 [GROWTH] === GET ANALYTICS DASHBOARD REQUEST ===');
+  
+  try {
+    const tenantId = req.user?.tenantId;
+    const { timeframe = '30d' } = req.query;
+    
+    if (!tenantId) {
+      console.log('❌ [GROWTH] Missing tenant ID in token');
+      return res.status(400).json({ error: 'Missing tenant ID' });
+    }
+
+    console.log(`📊 [GROWTH] Fetching analytics dashboard for tenant: ${tenantId}, timeframe: ${timeframe}`);
+
+    // Calculate date range for recent activity
+    const now = new Date();
+    let startDate = new Date();
+    
+    switch (timeframe) {
+      case '7d':
+        startDate.setDate(now.getDate() - 7);
+        break;
+      case '30d':
+        startDate.setDate(now.getDate() - 30);
+        break;
+      case '90d':
+        startDate.setDate(now.getDate() - 90);
+        break;
+      case '1y':
+        startDate.setFullYear(now.getFullYear() - 1);
+        break;
+      default:
+        startDate.setDate(now.getDate() - 30);
+    }
+
+    // Get comprehensive data
+    const [campaigns, contacts, emails, events, followUpTasks] = await Promise.all([
+      // Campaigns
+      prisma.growthCampaign.findMany({
+        where: { tenantId: tenantId },
+        include: {
+          discoveredBrands: {
+            include: {
+              discoveredSuppliers: {
+                include: {
+                  targetContacts: true
+                }
+              }
+            }
+          }
+        }
+      }),
+      
+      // Contacts
+      prisma.targetContact.findMany({
+        where: {
+          discoveredSupplier: {
+            discoveredBrand: {
+              campaign: {
+                tenantId: tenantId
+              }
+            }
+          }
+        },
+        include: {
+          discoveredSupplier: {
+            include: {
+              discoveredBrand: {
+                include: {
+                  campaign: true
+                }
+              }
+            }
+          }
+        }
+      }),
+      
+      // Emails
+      prisma.outreachEmail.findMany({
+        where: {
+          targetContact: {
+            discoveredSupplier: {
+              discoveredBrand: {
+                campaign: {
+                  tenantId: tenantId
+                }
+              }
+            }
+          }
+        },
+        include: {
+          targetContact: {
+            include: {
+              discoveredSupplier: {
+                include: {
+                  discoveredBrand: {
+                    include: {
+                      campaign: true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }),
+      
+      // Events
+      prisma.outreachEmailEvent.findMany({
+        where: {
+          outreachEmail: {
+            targetContact: {
+              discoveredSupplier: {
+                discoveredBrand: {
+                  campaign: {
+                    tenantId: tenantId
+                  }
+                }
+              }
+            }
+          }
+        },
+        include: {
+          outreachEmail: true
+        }
+      }),
+      
+      // Follow-up tasks
+      prisma.followUpTask.findMany({
+        where: { tenantId: tenantId },
+        include: {
+          relatedContact: true,
+          relatedEmail: true
+        }
+      })
+    ]);
+
+    // Calculate key metrics
+    const totalCampaigns = campaigns.length;
+    const totalBrands = campaigns.reduce((sum, c) => sum + (c.discoveredBrands?.length || 0), 0);
+    const totalSuppliers = campaigns.reduce((sum, c) => 
+      sum + c.discoveredBrands.reduce((brandSum, b) => brandSum + (b.discoveredSuppliers?.length || 0), 0), 0);
+    const totalContacts = contacts.length;
+    const totalEmails = emails.length;
+    const totalEvents = events.length;
+
+    // Email status breakdown
+    const emailStatusBreakdown = emails.reduce((acc, email) => {
+      acc[email.status] = (acc[email.status] || 0) + 1;
+      return acc;
+    }, {});
+
+    // Contact status breakdown
+    const contactStatusBreakdown = contacts.reduce((acc, contact) => {
+      acc[contact.status] = (acc[contact.status] || 0) + 1;
+      return acc;
+    }, {});
+
+    // Event type breakdown
+    const eventTypeBreakdown = events.reduce((acc, event) => {
+      acc[event.type] = (acc[event.type] || 0) + 1;
+      return acc;
+    }, {});
+
+    // Calculate engagement rates
+    const sentEmails = emailStatusBreakdown.SENT || 0;
+    const repliedEmails = emailStatusBreakdown.REPLIED || 0;
+    const failedEmails = emailStatusBreakdown.FAILED || 0;
+    const openEvents = eventTypeBreakdown.OPENED || 0;
+    const clickEvents = eventTypeBreakdown.CLICKED || 0;
+
+    // Recent activity (last 30 days)
+    const recentActivityFilter = (item) => new Date(item.createdAt) >= startDate;
+    const recentCampaigns = campaigns.filter(recentActivityFilter);
+    const recentContacts = contacts.filter(recentActivityFilter);
+    const recentEmails = emails.filter(recentActivityFilter);
+    const recentEvents = events.filter(recentActivityFilter);
+
+    // Top performing campaigns
+    const campaignPerformance = campaigns.map(campaign => {
+      const campaignBrands = campaign.discoveredBrands || [];
+      const campaignSuppliers = campaignBrands.flatMap(b => b.discoveredSuppliers || []);
+      const campaignContacts = campaignSuppliers.flatMap(s => s.targetContacts || []);
+      const campaignEmails = emails.filter(e => 
+        e.targetContact.discoveredSupplier.discoveredBrand.campaign.id === campaign.id
+      );
+      const campaignEmailEvents = events.filter(e => 
+        campaignEmails.some(email => email.id === e.outreachEmailId)
+      );
+
+      const sentCount = campaignEmails.filter(e => e.status === 'SENT').length;
+      const repliedCount = campaignEmails.filter(e => e.status === 'REPLIED').length;
+      
+      return {
+        campaignId: campaign.id,
+        campaignName: campaign.name,
+        status: campaign.status,
+        contactsEnriched: campaignContacts.length,
+        emailsSent: sentCount,
+        emailsReplied: repliedCount,
+        replyRate: sentCount > 0 ? ((repliedCount / sentCount) * 100).toFixed(2) : '0.00',
+        totalEngagement: campaignEmailEvents.length,
+        createdAt: campaign.createdAt
+      };
+    }).sort((a, b) => parseFloat(b.replyRate) - parseFloat(a.replyRate));
+
+    // Follow-up task breakdown
+    const taskStatusBreakdown = followUpTasks.reduce((acc, task) => {
+      acc[task.status] = (acc[task.status] || 0) + 1;
+      return acc;
+    }, {});
+
+    const dashboard = {
+      tenantId: tenantId,
+      timeframe: timeframe,
+      generatedAt: now.toISOString(),
+      
+      // Key metrics
+      overview: {
+        totalCampaigns,
+        totalBrands,
+        totalSuppliers,
+        totalContacts,
+        totalEmails,
+        totalEvents,
+        activeContacts: contactStatusBreakdown.ACTIVE || 0,
+        suppressedContacts: contactStatusBreakdown.DO_NOT_CONTACT || 0,
+        pendingTasks: taskStatusBreakdown.TODO || 0
+      },
+      
+      // Performance metrics
+      performance: {
+        emailsSent: sentEmails,
+        emailsReplied: repliedEmails,
+        emailsFailed: failedEmails,
+        emailsQueued: emailStatusBreakdown.QUEUED || 0,
+        emailsDraft: emailStatusBreakdown.DRAFT || 0,
+        
+        // Engagement
+        totalOpens: openEvents,
+        totalClicks: clickEvents,
+        uniqueOpens: events.filter(e => e.type === 'OPENED').map(e => e.outreachEmailId).filter((v, i, a) => a.indexOf(v) === i).length,
+        uniqueClicks: events.filter(e => e.type === 'CLICKED').map(e => e.outreachEmailId).filter((v, i, a) => a.indexOf(v) === i).length,
+        
+        // Rates
+        openRate: sentEmails > 0 ? ((openEvents / sentEmails) * 100).toFixed(2) : '0.00',
+        clickRate: sentEmails > 0 ? ((clickEvents / sentEmails) * 100).toFixed(2) : '0.00',
+        replyRate: sentEmails > 0 ? ((repliedEmails / sentEmails) * 100).toFixed(2) : '0.00',
+        bounceRate: sentEmails > 0 ? ((failedEmails / sentEmails) * 100).toFixed(2) : '0.00'
+      },
+      
+      // Recent activity
+      recentActivity: {
+        campaignsCreated: recentCampaigns.length,
+        contactsAcquired: recentContacts.length,
+        emailsGenerated: recentEmails.length,
+        engagementEvents: recentEvents.length
+      },
+      
+      // Top performing campaigns
+      topCampaigns: campaignPerformance.slice(0, 5),
+      
+      // Breakdown data
+      breakdowns: {
+        emailStatus: emailStatusBreakdown,
+        contactStatus: contactStatusBreakdown,
+        eventTypes: eventTypeBreakdown,
+        taskStatus: taskStatusBreakdown,
+        campaignStatus: campaigns.reduce((acc, c) => {
+          acc[c.status] = (acc[c.status] || 0) + 1;
+          return acc;
+        }, {})
+      }
+    };
+
+    console.log(`✅ [GROWTH] Analytics dashboard retrieved for tenant: ${tenantId}`, {
+      totalCampaigns: dashboard.overview.totalCampaigns,
+      totalContacts: dashboard.overview.totalContacts,
+      totalEmails: dashboard.overview.totalEmails,
+      replyRate: dashboard.performance.replyRate + '%'
+    });
+    console.log('✅ [GROWTH] === GET ANALYTICS DASHBOARD SUCCESS ===');
+    
+    res.status(200).json(dashboard);
+
+  } catch (error) {
+    console.error('❌ [GROWTH] === GET ANALYTICS DASHBOARD ERROR ===');
+    console.error(`❌ [GROWTH] Error fetching analytics dashboard:`, error);
+    console.error('❌ [GROWTH] Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to fetch analytics dashboard',
+      details: error.message 
+    });
+  }
+};
+
+/**
  * 📤 TRIGGER EMAIL SEND: Trigger n8n EmailSender workflow to send an approved email draft
  * Called by frontend when user clicks "Send" or "Approve & Send" button.
  * Uses JWT authentication.
