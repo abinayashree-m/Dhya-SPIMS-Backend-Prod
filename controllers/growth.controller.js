@@ -2936,12 +2936,13 @@ exports.createTaskFromReply = async (req, res) => {
   console.log('📬 [GROWTH] === CREATE TASK FROM REPLY REQUEST ===');
   
   try {
-    const { senderEmail, subject, tenantId } = req.body;
+    const { senderEmail, subject, tenantId, replyBody } = req.body;
     
     console.log('📬 [GROWTH] Reply detection request:', {
       senderEmail: senderEmail,
       subject: subject,
-      tenantId: tenantId
+      tenantId: tenantId,
+      hasReplyBody: !!replyBody
     });
 
     if (!senderEmail || !subject || !tenantId) {
@@ -3011,11 +3012,18 @@ exports.createTaskFromReply = async (req, res) => {
     });
 
     // Create the high-priority follow-up task
+    const taskNotes = `CUSTOMER REPLY:\n${replyBody || 'No reply text captured'}\n\n` +
+      `--- CONTEXT ---\n` +
+      `Regarding email with subject: "${lastSentEmail?.subject || subject}"\n\n` +
+      `Contact: ${contact.name} (${contact.email})\n` +
+      `Company: ${contact.discoveredSupplier.companyName}\n` +
+      `Campaign: ${contact.discoveredSupplier.discoveredBrand.campaign.name}`;
+
     const followUpTask = await prisma.followUpTask.create({
       data: {
         tenantId: tenantId,
         title: `Reply received from: ${contact.name}`,
-        notes: `Regarding email with subject: "${lastSentEmail?.subject || subject}"\n\nContact: ${contact.name} (${contact.email})\nCompany: ${contact.discoveredSupplier.companyName}\nCampaign: ${contact.discoveredSupplier.discoveredBrand.campaign.name}`,
+        notes: taskNotes,
         priority: 'HIGH',
         status: 'TODO',
         relatedContactId: contact.id,
@@ -3369,3 +3377,645 @@ exports.resendEmail = async (req, res) => {
     });
   }
 }; 
+
+// =====================================================
+// TASK MANAGEMENT CRUD ENDPOINTS (Module 5)
+// =====================================================
+
+/**
+ * 📋 GET TASKS: Get all tasks with optional filtering
+ * Called by frontend task management components.
+ * Uses JWT authentication.
+ */
+exports.getGrowthTasks = async (req, res) => {
+  console.log('📋 [GROWTH] === GET GROWTH TASKS REQUEST ===');
+  
+  try {
+    const tenantId = req.user?.tenantId;
+    const { 
+      status, 
+      priority, 
+      taskType, 
+      limit = 50, 
+      offset = 0 
+    } = req.query;
+    
+    if (!tenantId) {
+      console.log('❌ [GROWTH] Missing tenant ID in token');
+      return res.status(400).json({ error: 'Missing tenant ID' });
+    }
+
+    console.log(`📋 [GROWTH] Fetching tasks for tenant: ${tenantId}`, {
+      status, priority, taskType, limit, offset
+    });
+
+    // Build filter conditions
+    const where = {
+      tenantId: tenantId
+    };
+
+    if (status && status !== 'ALL') {
+      where.status = status;
+    }
+
+    if (priority && priority !== 'ALL') {
+      where.priority = priority;
+    }
+
+    // TaskType filtering: REPLY_FOLLOWUP = has relatedEmailId, GENERAL = no relatedEmailId
+    if (taskType === 'REPLY_FOLLOWUP') {
+      where.relatedEmailId = { not: null };
+    } else if (taskType === 'GENERAL') {
+      where.relatedEmailId = null;
+    }
+
+    // Get tasks with related data
+    const [tasks, totalCount] = await Promise.all([
+      prisma.followUpTask.findMany({
+        where,
+        include: {
+          relatedContact: {
+            include: {
+              discoveredSupplier: {
+                include: {
+                  discoveredBrand: {
+                    include: {
+                      campaign: true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          relatedEmail: true
+        },
+        orderBy: [
+          { status: 'asc' }, // TODO first
+          { priority: 'desc' }, // HIGH first
+          { createdAt: 'desc' } // Newest first
+        ],
+        take: parseInt(limit),
+        skip: parseInt(offset)
+      }),
+      
+      prisma.followUpTask.count({ where })
+    ]);
+
+    // Transform tasks to match frontend interface
+    const transformedTasks = tasks.map(task => ({
+      id: task.id,
+      title: task.title,
+      description: task.notes || '',
+      priority: task.priority,
+      status: task.status,
+      taskType: task.relatedEmailId ? 'REPLY_FOLLOWUP' : 'GENERAL',
+      assignedUserId: null, // Not implemented yet
+      dueDate: task.dueDate?.toISOString() || null,
+      completedAt: task.status === 'DONE' ? task.updatedAt.toISOString() : null,
+      createdAt: task.createdAt.toISOString(),
+      updatedAt: task.updatedAt.toISOString(),
+      
+      // Reply-specific context
+      originalEmailId: task.relatedEmailId,
+      contactId: task.relatedContactId,
+      contactName: task.relatedContact?.name || null,
+      contactEmail: task.relatedContact?.email || null,
+      companyName: task.relatedContact?.discoveredSupplier?.companyName || null,
+      campaignId: task.relatedContact?.discoveredSupplier?.discoveredBrand?.campaignId || null,
+      campaignName: task.relatedContact?.discoveredSupplier?.discoveredBrand?.campaign?.name || null,
+      replySubject: task.relatedEmail?.subject || null
+    }));
+
+    // Calculate counts
+    const pendingCount = await prisma.followUpTask.count({
+      where: { tenantId, status: 'TODO' }
+    });
+
+    const highPriorityCount = await prisma.followUpTask.count({
+      where: { tenantId, status: 'TODO', priority: 'HIGH' }
+    });
+
+    console.log(`✅ [GROWTH] Found ${transformedTasks.length} tasks for tenant: ${tenantId}`);
+
+    res.status(200).json({
+      tasks: transformedTasks,
+      totalCount,
+      pendingCount,
+      highPriorityCount
+    });
+
+  } catch (error) {
+    console.error('❌ [GROWTH] Error fetching growth tasks:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch tasks',
+      details: error.message 
+    });
+  }
+};
+
+/**
+ * 📋 GET TASK BY ID: Get a specific task by ID
+ * Called by frontend when viewing task details.
+ * Uses JWT authentication.
+ */
+exports.getGrowthTask = async (req, res) => {
+  console.log('📋 [GROWTH] === GET GROWTH TASK BY ID REQUEST ===');
+  
+  try {
+    const tenantId = req.user?.tenantId;
+    const { taskId } = req.params;
+    
+    if (!tenantId) {
+      console.log('❌ [GROWTH] Missing tenant ID in token');
+      return res.status(400).json({ error: 'Missing tenant ID' });
+    }
+
+    console.log(`📋 [GROWTH] Fetching task: ${taskId} for tenant: ${tenantId}`);
+
+    const task = await prisma.followUpTask.findFirst({
+      where: { 
+        id: taskId,
+        tenantId: tenantId 
+      },
+      include: {
+        relatedContact: {
+          include: {
+            discoveredSupplier: {
+              include: {
+                discoveredBrand: {
+                  include: {
+                    campaign: true
+                  }
+                }
+              }
+            }
+          }
+        },
+        relatedEmail: true
+      }
+    });
+
+    if (!task) {
+      console.log(`❌ [GROWTH] Task not found: ${taskId} for tenant: ${tenantId}`);
+      return res.status(404).json({ 
+        error: 'Task not found',
+        message: 'Task not found or you do not have permission to access it.'
+      });
+    }
+
+    // Transform to match frontend interface
+    const transformedTask = {
+      id: task.id,
+      title: task.title,
+      description: task.notes || '',
+      priority: task.priority,
+      status: task.status,
+      taskType: task.relatedEmailId ? 'REPLY_FOLLOWUP' : 'GENERAL',
+      assignedUserId: null,
+      dueDate: task.dueDate?.toISOString() || null,
+      completedAt: task.status === 'DONE' ? task.updatedAt.toISOString() : null,
+      createdAt: task.createdAt.toISOString(),
+      updatedAt: task.updatedAt.toISOString(),
+      
+      // Reply-specific context
+      originalEmailId: task.relatedEmailId,
+      contactId: task.relatedContactId,
+      contactName: task.relatedContact?.name || null,
+      contactEmail: task.relatedContact?.email || null,
+      companyName: task.relatedContact?.discoveredSupplier?.companyName || null,
+      campaignId: task.relatedContact?.discoveredSupplier?.discoveredBrand?.campaignId || null,
+      campaignName: task.relatedContact?.discoveredSupplier?.discoveredBrand?.campaign?.name || null,
+      replySubject: task.relatedEmail?.subject || null
+    };
+
+    console.log(`✅ [GROWTH] Task retrieved: ${taskId}`);
+    res.status(200).json(transformedTask);
+
+  } catch (error) {
+    console.error('❌ [GROWTH] Error fetching growth task:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch task',
+      details: error.message 
+    });
+  }
+};
+
+/**
+ * 📋 CREATE TASK: Create a new growth task
+ * Called by frontend when creating manual tasks.
+ * Uses JWT authentication.
+ */
+exports.createGrowthTask = async (req, res) => {
+  console.log('📋 [GROWTH] === CREATE GROWTH TASK REQUEST ===');
+  
+  try {
+    const tenantId = req.user?.tenantId;
+    const { 
+      title, 
+      description, 
+      priority = 'MEDIUM',
+      taskType = 'GENERAL',
+      dueDate,
+      contactId 
+    } = req.body;
+    
+    if (!tenantId) {
+      console.log('❌ [GROWTH] Missing tenant ID in token');
+      return res.status(400).json({ error: 'Missing tenant ID' });
+    }
+
+    if (!title) {
+      console.log('❌ [GROWTH] Missing required field: title');
+      return res.status(400).json({ 
+        error: 'Missing required fields',
+        message: 'title is required.' 
+      });
+    }
+
+    console.log(`📋 [GROWTH] Creating task for tenant: ${tenantId}`, {
+      title, priority, taskType, dueDate, contactId
+    });
+
+    // Create task data
+    const taskData = {
+      tenantId: tenantId,
+      title: title,
+      notes: description || null,
+      priority: priority,
+      status: 'TODO',
+      dueDate: dueDate ? new Date(dueDate) : null,
+      relatedContactId: contactId || null
+    };
+
+    const newTask = await prisma.followUpTask.create({
+      data: taskData,
+      include: {
+        relatedContact: {
+          include: {
+            discoveredSupplier: {
+              include: {
+                discoveredBrand: {
+                  include: {
+                    campaign: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // Transform to match frontend interface
+    const transformedTask = {
+      id: newTask.id,
+      title: newTask.title,
+      description: newTask.notes || '',
+      priority: newTask.priority,
+      status: newTask.status,
+      taskType: newTask.relatedEmailId ? 'REPLY_FOLLOWUP' : 'GENERAL',
+      assignedUserId: null,
+      dueDate: newTask.dueDate?.toISOString() || null,
+      completedAt: null,
+      createdAt: newTask.createdAt.toISOString(),
+      updatedAt: newTask.updatedAt.toISOString(),
+      
+      // Contact context if available
+      contactId: newTask.relatedContactId,
+      contactName: newTask.relatedContact?.name || null,
+      contactEmail: newTask.relatedContact?.email || null,
+      companyName: newTask.relatedContact?.discoveredSupplier?.companyName || null,
+      campaignId: newTask.relatedContact?.discoveredSupplier?.discoveredBrand?.campaignId || null,
+      campaignName: newTask.relatedContact?.discoveredSupplier?.discoveredBrand?.campaign?.name || null
+    };
+
+    console.log(`✅ [GROWTH] Task created: ${newTask.id}`);
+    res.status(201).json(transformedTask);
+
+  } catch (error) {
+    console.error('❌ [GROWTH] Error creating growth task:', error);
+    res.status(500).json({ 
+      error: 'Failed to create task',
+      details: error.message 
+    });
+  }
+};
+
+/**
+ * 📋 UPDATE TASK: Update an existing growth task
+ * Called by frontend when editing tasks.
+ * Uses JWT authentication.
+ */
+exports.updateGrowthTask = async (req, res) => {
+  console.log('📋 [GROWTH] === UPDATE GROWTH TASK REQUEST ===');
+  
+  try {
+    const tenantId = req.user?.tenantId;
+    const { taskId } = req.params;
+    const { 
+      title, 
+      description, 
+      priority, 
+      status, 
+      dueDate 
+    } = req.body;
+    
+    if (!tenantId) {
+      console.log('❌ [GROWTH] Missing tenant ID in token');
+      return res.status(400).json({ error: 'Missing tenant ID' });
+    }
+
+    console.log(`📋 [GROWTH] Updating task: ${taskId} for tenant: ${tenantId}`, {
+      title, priority, status, dueDate
+    });
+
+    // Build update data (only include provided fields)
+    const updateData = {};
+    if (title !== undefined) updateData.title = title;
+    if (description !== undefined) updateData.notes = description;
+    if (priority !== undefined) updateData.priority = priority;
+    if (status !== undefined) updateData.status = status;
+    if (dueDate !== undefined) updateData.dueDate = dueDate ? new Date(dueDate) : null;
+
+    const updatedTask = await prisma.followUpTask.update({
+      where: { 
+        id: taskId,
+        tenantId: tenantId // Ensure tenant ownership
+      },
+      data: updateData,
+      include: {
+        relatedContact: {
+          include: {
+            discoveredSupplier: {
+              include: {
+                discoveredBrand: {
+                  include: {
+                    campaign: true
+                  }
+                }
+              }
+            }
+          }
+        },
+        relatedEmail: true
+      }
+    });
+
+    // Transform to match frontend interface
+    const transformedTask = {
+      id: updatedTask.id,
+      title: updatedTask.title,
+      description: updatedTask.notes || '',
+      priority: updatedTask.priority,
+      status: updatedTask.status,
+      taskType: updatedTask.relatedEmailId ? 'REPLY_FOLLOWUP' : 'GENERAL',
+      assignedUserId: null,
+      dueDate: updatedTask.dueDate?.toISOString() || null,
+      completedAt: updatedTask.status === 'DONE' ? updatedTask.updatedAt.toISOString() : null,
+      createdAt: updatedTask.createdAt.toISOString(),
+      updatedAt: updatedTask.updatedAt.toISOString(),
+      
+      // Reply-specific context
+      originalEmailId: updatedTask.relatedEmailId,
+      contactId: updatedTask.relatedContactId,
+      contactName: updatedTask.relatedContact?.name || null,
+      contactEmail: updatedTask.relatedContact?.email || null,
+      companyName: updatedTask.relatedContact?.discoveredSupplier?.companyName || null,
+      campaignId: updatedTask.relatedContact?.discoveredSupplier?.discoveredBrand?.campaignId || null,
+      campaignName: updatedTask.relatedContact?.discoveredSupplier?.discoveredBrand?.campaign?.name || null,
+      replySubject: updatedTask.relatedEmail?.subject || null
+    };
+
+    console.log(`✅ [GROWTH] Task updated: ${taskId}`);
+    res.status(200).json(transformedTask);
+
+  } catch (error) {
+    if (error.code === 'P2025') {
+      console.log(`❌ [GROWTH] Task not found: ${req.params.taskId}`);
+      return res.status(404).json({ 
+        error: 'Task not found',
+        message: 'Task not found or you do not have permission to update it.'
+      });
+    }
+    
+    console.error('❌ [GROWTH] Error updating growth task:', error);
+    res.status(500).json({ 
+      error: 'Failed to update task',
+      details: error.message 
+    });
+  }
+};
+
+/**
+ * 📋 DELETE TASK: Delete a growth task
+ * Called by frontend when deleting tasks.
+ * Uses JWT authentication.
+ */
+exports.deleteGrowthTask = async (req, res) => {
+  console.log('📋 [GROWTH] === DELETE GROWTH TASK REQUEST ===');
+  
+  try {
+    const tenantId = req.user?.tenantId;
+    const { taskId } = req.params;
+    
+    if (!tenantId) {
+      console.log('❌ [GROWTH] Missing tenant ID in token');
+      return res.status(400).json({ error: 'Missing tenant ID' });
+    }
+
+    console.log(`📋 [GROWTH] Deleting task: ${taskId} for tenant: ${tenantId}`);
+
+    await prisma.followUpTask.delete({
+      where: { 
+        id: taskId,
+        tenantId: tenantId // Ensure tenant ownership
+      }
+    });
+
+    console.log(`✅ [GROWTH] Task deleted: ${taskId}`);
+    res.status(200).json({ 
+      message: 'Task deleted successfully',
+      taskId: taskId
+    });
+
+  } catch (error) {
+    if (error.code === 'P2025') {
+      console.log(`❌ [GROWTH] Task not found: ${req.params.taskId}`);
+      return res.status(404).json({ 
+        error: 'Task not found',
+        message: 'Task not found or you do not have permission to delete it.'
+      });
+    }
+    
+    console.error('❌ [GROWTH] Error deleting growth task:', error);
+    res.status(500).json({ 
+      error: 'Failed to delete task',
+      details: error.message 
+    });
+  }
+};
+
+/**
+ * 🤖 GENERATE AI REPLY: Generate an AI-powered reply draft for a specific task
+ * This endpoint gathers all context and triggers an n8n workflow to generate a reply.
+ */
+exports.generateAIReply = async (req, res) => {
+  console.log('🤖 [GROWTH] === GENERATE AI REPLY REQUEST ===');
+  
+  try {
+    const { taskId } = req.params;
+    const tenantId = req.user.tenantId;
+
+    console.log('🤖 [GROWTH] AI reply generation request:', {
+      taskId: taskId,
+      tenantId: tenantId
+    });
+
+    // Fetch the task with all related data
+    const task = await prisma.followUpTask.findFirst({
+      where: { 
+        id: taskId,
+        tenantId: tenantId
+      },
+      include: {
+        relatedContact: {
+          include: {
+            discoveredSupplier: {
+              include: {
+                discoveredBrand: {
+                  include: {
+                    campaign: {
+                      include: {
+                        companyPersona: true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        relatedEmail: true
+      }
+    });
+
+    if (!task) {
+      console.log(`❌ [GROWTH] Task not found: ${taskId}`);
+      return res.status(404).json({ 
+        error: 'Task not found',
+        message: 'Task not found or you do not have permission to access it.'
+      });
+    }
+
+    // Verify this is a reply follow-up task
+    if (task.relatedEmailId === null) {
+      console.log(`❌ [GROWTH] Not a reply task: ${taskId}`);
+      return res.status(400).json({ 
+        error: 'Invalid task type',
+        message: 'AI reply generation is only available for reply follow-up tasks.'
+      });
+    }
+
+    // Extract the customer's reply text from the task notes
+    const replyText = task.notes?.split('CUSTOMER REPLY:\n')[1]?.split('\n\n--- CONTEXT ---')[0]?.trim() || 'No reply text available';
+    
+    console.log('🤖 [GROWTH] Extracted reply text:', {
+      hasReplyText: !!replyText,
+      replyLength: replyText.length
+    });
+
+    // Prepare the context bundle for n8n
+    const contextBundle = {
+      taskId: task.id,
+      contactName: task.relatedContact?.name || 'Unknown Contact',
+      contactEmail: task.relatedContact?.email || '',
+      companyName: task.relatedContact?.discoveredSupplier?.companyName || 'Unknown Company',
+      campaignName: task.relatedContact?.discoveredSupplier?.discoveredBrand?.campaign?.name || 'Unknown Campaign',
+      
+      // Original email context
+      originalEmail: {
+        id: task.relatedEmailId,
+        subject: task.relatedEmail?.subject || 'Unknown Subject',
+        body: task.relatedEmail?.body || 'Original email body not available'
+      },
+      
+      // Customer's reply
+      replyText: replyText,
+      
+      // Company persona for context
+      companyPersona: {
+        id: task.relatedContact?.discoveredSupplier?.discoveredBrand?.campaign?.companyPersona?.id || null,
+        summary: task.relatedContact?.discoveredSupplier?.discoveredBrand?.campaign?.companyPersona?.summary || 'Company persona not available'
+      }
+    };
+
+    console.log('🤖 [GROWTH] Prepared context bundle:', {
+      hasOriginalEmail: !!contextBundle.originalEmail.body,
+      hasReplyText: !!contextBundle.replyText,
+      hasPersona: !!contextBundle.companyPersona.summary,
+      contactName: contextBundle.contactName
+    });
+
+    // Trigger the n8n ReplyDrafter workflow
+    const n8nWebhookUrl = process.env.N8N_REPLY_DRAFTER_WEBHOOK_URL;
+    
+    if (!n8nWebhookUrl) {
+      console.log('❌ [GROWTH] N8N_REPLY_DRAFTER_WEBHOOK_URL not configured');
+      return res.status(500).json({ 
+        error: 'Configuration error',
+        message: 'AI reply generation is not configured. Please contact your administrator.'
+      });
+    }
+
+    console.log('🤖 [GROWTH] Triggering n8n ReplyDrafter workflow...');
+
+    // Make the request to n8n and wait for the response
+    const axios = require('axios');
+    const n8nResponse = await axios.post(n8nWebhookUrl, contextBundle, {
+      timeout: 30000, // 30 second timeout
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+    console.log('🤖 [GROWTH] n8n ReplyDrafter response:', {
+      status: n8nResponse.status,
+      hasData: !!n8nResponse.data
+    });
+
+    // Return the AI-generated reply draft
+    const aiReplyDraft = n8nResponse.data?.reply || n8nResponse.data?.generatedReply || 'AI reply generation failed';
+    
+    console.log('✅ [GROWTH] AI reply generated successfully');
+    console.log('✅ [GROWTH] === GENERATE AI REPLY SUCCESS ===');
+
+    res.status(200).json({ 
+      message: 'AI reply generated successfully',
+      taskId: task.id,
+      aiReplyDraft: aiReplyDraft,
+      context: {
+        contactName: contextBundle.contactName,
+        companyName: contextBundle.companyName,
+        originalSubject: contextBundle.originalEmail.subject
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ [GROWTH] === GENERATE AI REPLY ERROR ===');
+    console.error('❌ [GROWTH] Error generating AI reply:', error);
+    console.error('❌ [GROWTH] Error stack:', error.stack);
+    
+    if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+      return res.status(408).json({ 
+        error: 'Request timeout',
+        message: 'AI reply generation took too long. Please try again.'
+      });
+    }
+    
+    res.status(500).json({ 
+      error: 'Failed to generate AI reply',
+      message: 'Internal server error while generating AI reply.',
+      details: error.message 
+    });
+  }
+};

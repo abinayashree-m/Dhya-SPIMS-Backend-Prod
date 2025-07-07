@@ -892,8 +892,6 @@ router.post('/email-events', n8nAuthMiddleware, growthController.processEmailEve
  */
 router.post('/outreach-emails/:emailId/send', verifyToken, growthController.triggerEmailSend);
 
-
-
 /**
  * @swagger
  * /growth/contacts/find-by-email:
@@ -1036,6 +1034,9 @@ router.get('/contacts/find-by-email', n8nAuthMiddleware, growthController.findCo
  *                 type: string
  *                 format: uuid
  *                 description: Tenant ID for the organization
+ *               replyBody:
+ *                 type: string
+ *                 description: The text content of the customer's reply email
  *     responses:
  *       201:
  *         description: Follow-up task created successfully
@@ -1097,6 +1098,278 @@ router.get('/contacts/find-by-email', n8nAuthMiddleware, growthController.findCo
  *         description: Server error
  */
 router.post('/tasks/create-from-reply', n8nAuthMiddleware, growthController.createTaskFromReply);
+
+// =====================================================
+// TASK MANAGEMENT CRUD ROUTES (Module 5)
+// =====================================================
+
+/**
+ * @swagger
+ * /growth/tasks:
+ *   get:
+ *     summary: Get all growth tasks with optional filtering
+ *     tags: [Growth Engine - Tasks]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [TODO, IN_PROGRESS, DONE]
+ *         description: Filter by task status
+ *       - in: query
+ *         name: priority
+ *         schema:
+ *           type: string
+ *           enum: [HIGH, MEDIUM, LOW]
+ *         description: Filter by task priority
+ *       - in: query
+ *         name: taskType
+ *         schema:
+ *           type: string
+ *           enum: [REPLY_FOLLOWUP, GENERAL]
+ *         description: Filter by task type
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Maximum number of tasks to return
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *         description: Number of tasks to skip
+ *     responses:
+ *       200:
+ *         description: Tasks retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 tasks:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                 totalCount:
+ *                   type: integer
+ *                 pendingCount:
+ *                   type: integer
+ *                 highPriorityCount:
+ *                   type: integer
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ *   post:
+ *     summary: Create a new growth task
+ *     tags: [Growth Engine - Tasks]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - title
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 description: Task title
+ *               description:
+ *                 type: string
+ *                 description: Task description
+ *               priority:
+ *                 type: string
+ *                 enum: [HIGH, MEDIUM, LOW]
+ *                 default: MEDIUM
+ *               taskType:
+ *                 type: string
+ *                 enum: [REPLY_FOLLOWUP, GENERAL]
+ *                 default: GENERAL
+ *               dueDate:
+ *                 type: string
+ *                 format: date-time
+ *                 description: Task due date
+ *               contactId:
+ *                 type: string
+ *                 format: uuid
+ *                 description: Related contact ID
+ *     responses:
+ *       201:
+ *         description: Task created successfully
+ *       400:
+ *         description: Missing required fields
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
+router.get('/tasks', verifyToken, growthController.getGrowthTasks);
+router.post('/tasks', verifyToken, growthController.createGrowthTask);
+
+/**
+ * @swagger
+ * /growth/tasks/{taskId}:
+ *   get:
+ *     summary: Get a specific growth task by ID
+ *     tags: [Growth Engine - Tasks]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Task ID
+ *     responses:
+ *       200:
+ *         description: Task retrieved successfully
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Task not found
+ *       500:
+ *         description: Server error
+ *   put:
+ *     summary: Update an existing growth task
+ *     tags: [Growth Engine - Tasks]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Task ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 description: Task title
+ *               description:
+ *                 type: string
+ *                 description: Task description
+ *               priority:
+ *                 type: string
+ *                 enum: [HIGH, MEDIUM, LOW]
+ *               status:
+ *                 type: string
+ *                 enum: [TODO, IN_PROGRESS, DONE]
+ *               dueDate:
+ *                 type: string
+ *                 format: date-time
+ *                 description: Task due date
+ *     responses:
+ *       200:
+ *         description: Task updated successfully
+ *       400:
+ *         description: Invalid request data
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Task not found
+ *       500:
+ *         description: Server error
+ *   delete:
+ *     summary: Delete a growth task
+ *     tags: [Growth Engine - Tasks]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Task ID
+ *     responses:
+ *       200:
+ *         description: Task deleted successfully
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Task not found
+ *       500:
+ *         description: Server error
+ */
+router.get('/tasks/:taskId', verifyToken, growthController.getGrowthTask);
+router.put('/tasks/:taskId', verifyToken, growthController.updateGrowthTask);
+router.delete('/tasks/:taskId', verifyToken, growthController.deleteGrowthTask);
+
+/**
+ * @swagger
+ * /growth/tasks/{taskId}/generate-reply:
+ *   post:
+ *     summary: Generate an AI-powered reply draft for a specific task
+ *     tags: [Growth Engine - Tasks]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Task ID to generate reply for
+ *     responses:
+ *       200:
+ *         description: AI reply draft generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   description: Success message
+ *                 taskId:
+ *                   type: string
+ *                   description: Task ID
+ *                 aiReplyDraft:
+ *                   type: string
+ *                   description: AI-generated reply draft
+ *                 context:
+ *                   type: object
+ *                   properties:
+ *                     contactName:
+ *                       type: string
+ *                       description: Contact name
+ *                     companyName:
+ *                       type: string
+ *                       description: Company name
+ *                     originalSubject:
+ *                       type: string
+ *                       description: Original email subject
+ *       400:
+ *         description: Invalid task type (not a reply follow-up task)
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Task not found
+ *       408:
+ *         description: Request timeout - AI generation took too long
+ *       500:
+ *         description: AI generation failed or configuration error
+ */
+// AI Reply Generation Route
+router.post('/tasks/:taskId/generate-reply', verifyToken, growthController.generateAIReply);
 
 /**
  * @swagger
