@@ -38,51 +38,55 @@ exports.parseFileAndCreate = async (file, user) => {
     throw new Error('Could not parse document with AI service.');
   }
 
+  // Handle nested AI response structure
+  const metadata = parsedData.metadata || parsedData;
+  const lineItems = parsedData.line_items || parsedData.items || [];
+
   // Parse date from DD/MM/YYYY format
   let poDate;
-  if (parsedData.poDate) {
-    const [day, month, year] = parsedData.poDate.split('/');
+  if (metadata.po_date) {
+    const [day, month, year] = metadata.po_date.split('/');
     poDate = new Date(year, month - 1, day); // month is 0-based in JS
   } else {
     poDate = new Date(); // fallback to current date
   }
 
   const createPayload = {
-    po_number: parsedData.poNumber || 'N/A',
+    po_number: metadata.po_number || metadata.poNumber || 'N/A',
     po_date: poDate,
-    buyer_name: parsedData.buyerName || 'N/A',
-    buyer_contact_name: parsedData.buyerContactName || '',
-    buyer_contact_phone: parsedData.buyerContactPhone || '',
-    buyer_email: parsedData.buyerEmail || '',
-    buyer_address: parsedData.buyerAddress || '',
-    buyer_gst_no: parsedData.buyerGstNo || '',
-    buyer_pan_no: parsedData.buyerPanNo || '',
-    supplier_name: parsedData.supplierName || '',
-    supplier_gst_no: parsedData.supplierGstNo || '',
-    payment_terms: parsedData.paymentTerms || '',
-    style_ref_no: parsedData.styleRefNo || '',
-    delivery_address: parsedData.deliveryAddress || '',
-    tax_details: parsedData.taxDetails || {
+    buyer_name: metadata.buyer || metadata.buyerName || 'N/A',
+    buyer_contact_name: metadata.buyerContactName || '',
+    buyer_contact_phone: metadata.buyerContactPhone || '',
+    buyer_email: metadata.buyerEmail || '',
+    buyer_address: metadata.buyerAddress || '',
+    buyer_gst_no: metadata.buyerGstNo || '',
+    buyer_pan_no: metadata.buyerPanNo || '',
+    supplier_name: metadata.vendor || metadata.supplierName || '',
+    supplier_gst_no: metadata.supplierGstNo || '',
+    payment_terms: metadata.payment_terms || metadata.paymentTerms || '',
+    style_ref_no: metadata.style_ref_no || metadata.styleRefNo || '',
+    delivery_address: metadata.deliveryAddress || '',
+    tax_details: metadata.tax_details || metadata.taxDetails || {
       cgst: 0,
       igst: 0,
       sgst: 0,
       round_off: 0
     },
-    grand_total: parsedData.grandTotal || 0,
-    amount_in_words: parsedData.amountInWords || '',
-    notes: parsedData.notes || '',
-    items: (parsedData.items || []).map(item => ({
-      order_code: item.orderCode || '',
-      yarn_description: item.yarnDescription || '',
+    grand_total: metadata.total || metadata.grandTotal || 0,
+    amount_in_words: metadata.amount_in_words || metadata.amountInWords || '',
+    notes: metadata.notes || '',
+    items: lineItems.map(item => ({
+      order_code: item.order_code || item.orderCode || '',
+      yarn_description: item.description || item.yarnDescription || '',
       color: item.color || '',
       count: item.count || 0,
       uom: item.uom || 'KGS',
-      bag_count: item.bagCount || 0,
-      quantity: item.quantity || 0,
+      bag_count: item.bag_count || item.bagCount || 0,
+      quantity: item.quantity || item.qty || 0,
       rate: item.rate || 0,
-      gst_percent: item.gstPercent || 0,
-      taxable_amount: item.taxableAmount || 0,
-      shade_no: item.shadeNo || ''
+      gst_percent: item.gst_percent || item.gstPercent || 0,
+      taxable_amount: item.taxable_amount || item.taxableAmount || 0,
+      shade_no: item.shade_no || item.shadeNo || ''
     }))
   };
 
@@ -90,16 +94,69 @@ exports.parseFileAndCreate = async (file, user) => {
 };
 
 
-exports.getAll = async (user) => {
+exports.getAll = async (user, options = {}) => {
   if (!user || !user.tenantId) {
-    return [];
+    return {
+      data: [],
+      pagination: {
+        page: 1,
+        limit: 5,
+        total: 0,
+        totalPages: 0
+      }
+    };
   }
 
-  return await prisma.purchaseOrder.findMany({
-    where: { tenantId: user.tenantId },
+  const { page = 1, limit = 5, search = '', status = '', sortBy = 'createdAt', sortOrder = 'desc' } = options;
+  
+  // Calculate skip value for pagination
+  const skip = (page - 1) * limit;
+  
+  // Build where clause
+  const where = {
+    tenantId: user.tenantId,
+  };
+
+  // Add search filter if provided
+  if (search) {
+    where.OR = [
+      { poNumber: { contains: search, mode: 'insensitive' } },
+      { buyerName: { contains: search, mode: 'insensitive' } },
+      { supplierName: { contains: search, mode: 'insensitive' } },
+    ];
+  }
+
+  // Add status filter if provided
+  if (status) {
+    where.status = status;
+  }
+
+  // Get total count for pagination
+  const total = await prisma.purchaseOrder.count({ where });
+
+  // Get paginated data
+  const data = await prisma.purchaseOrder.findMany({
+    where,
     include: { items: true },
-    orderBy: { createdAt: 'desc' },
+    orderBy: { [sortBy]: sortOrder },
+    skip,
+    take: limit,
   });
+
+  // Calculate pagination metadata
+  const totalPages = Math.ceil(total / limit);
+
+  return {
+    data,
+    pagination: {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      total,
+      totalPages,
+      hasNext: page < totalPages,
+      hasPrev: page > 1
+    }
+  };
 };
 
 exports.getById = async (id, user) => {
@@ -141,7 +198,7 @@ exports.create = async (data, user) => {
     data: {
       tenantId: user.tenantId,
       createdBy: user.id,
-      status: 'uploaded',
+      status: 'pending',
       poNumber: po_number,
       buyerName: buyer_name,
       buyerContactName: buyer_contact_name,
@@ -186,6 +243,12 @@ exports.update = async (id, data) => {
   const {
     po_number,
     buyer_name,
+    buyer_contact_name,
+    buyer_contact_phone,
+    buyer_email,
+    buyer_address,
+    buyer_gst_no,
+    buyer_pan_no,
     payment_terms,
     notes,
     amount_in_words,
@@ -203,6 +266,12 @@ exports.update = async (id, data) => {
     data: {
       poNumber: po_number,
       buyerName: buyer_name,
+      buyerContactName: buyer_contact_name,
+      buyerContactPhone: buyer_contact_phone,
+      buyerEmail: buyer_email,
+      buyerAddress: buyer_address,
+      buyerGstNo: buyer_gst_no,
+      buyerPanNo: buyer_pan_no,
       paymentTerms: payment_terms,
       notes,
       amountInWords: amount_in_words,
@@ -212,6 +281,7 @@ exports.update = async (id, data) => {
           orderCode: item.order_code,
           yarnDescription: item.yarn_description,
           color: item.color,
+          count: item.count,
           uom: item.uom,
           bagCount: item.bag_count,
           quantity: item.quantity,

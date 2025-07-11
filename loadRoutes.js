@@ -41,6 +41,7 @@ const loadRoutes = (app, dir = path.join(__dirname, 'routes')) => {
         attendance: '/attendance',
         webhooks: '/api/webhooks',
         growth: '/api/growth',
+        ai: '/api/ai',
       }[routeName] || `/${routeName}`;
 
       console.log(`🔧 [LOAD_ROUTES] Route ${routeName} will be mounted at: ${mountPath}`);
@@ -73,6 +74,23 @@ const loadRoutes = (app, dir = path.join(__dirname, 'routes')) => {
           console.log('   - GET /api/growth/campaigns/:id/brands');
           console.log('   - PUT /api/growth/brands/:id/status');
         }
+        
+        // Special logging for AI routes
+        if (routeName === 'ai') {
+          console.log('🤖 [LOAD_ROUTES] AI Integration routes successfully mounted at /api/ai');
+          console.log('🤖 [LOAD_ROUTES] Available AI endpoints:');
+          console.log('   - GET /api/ai/insights');
+          console.log('   - POST /api/ai/insights/generate');
+          console.log('   - GET /api/ai/predictive-models');
+          console.log('   - POST /api/ai/predictive-models/train');
+          console.log('   - GET /api/ai/predictive-models/:modelId');
+          console.log('   - POST /api/ai/predictions/generate');
+          console.log('   - GET /api/ai/predictions/:modelId/history');
+          console.log('   - GET /api/ai/recommendations');
+          console.log('   - POST /api/ai/recommendations/:recommendationId/apply');
+          console.log('   - POST /api/ai/recommendations/generate');
+          console.log('   - GET /api/ai/real-time');
+        }
       } else {
         console.warn(`⚠️ [LOAD_ROUTES] Warning: Invalid router in ${file} - skipping`);
       }
@@ -84,9 +102,9 @@ const loadRoutes = (app, dir = path.join(__dirname, 'routes')) => {
   
   console.log('✅ [LOAD_ROUTES] Route loading process completed');
 };
-
+  
 const webhooksRoutes = require('./routes/webhooks.routes');
-
+  
 module.exports = (app) => {
   loadRoutes(app);
   app.use('/api', webhooksRoutes);

@@ -115,6 +115,7 @@ model Tenant {
   domain         String?
   plan           String?          @default("free")
   isActive       Boolean?         @default(true)
+  logo           String?          // Base64 encoded logo data
   createdAt      DateTime?        @default(now()) @db.Timestamp(6)
   updatedAt      DateTime?        @updatedAt @db.Timestamp(6)
 
@@ -389,7 +390,7 @@ model PurchaseOrder {
   tenantId             String              @db.Uuid
   poNumber             String
   poDate               DateTime?
-  status               String              @default("uploaded")
+  status               String              @default("pending")
   linkedSalesOrderId   String?             @db.Uuid
   buyerName            String
   buyerContactName     String?

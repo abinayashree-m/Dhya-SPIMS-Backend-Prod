@@ -574,6 +574,120 @@ const getDefaultDashboardSummary = () => ({
   }
 });
 
+// Helper function to calculate monthly trend arrays
+const calculateMonthlyTrends = async (tenantId) => {
+  const now = new Date();
+  const trends = {
+    operatingMarginTrend: [],
+    productionEfficiencyTrend: [],
+    revenueTrend: [],
+    qualityScoreTrend: []
+  };
+
+  // Calculate trends for the last 6 months
+  for (let i = 5; i >= 0; i--) {
+    const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
+    const monthKey = monthStart.toISOString().slice(0, 7); // YYYY-MM format
+
+    // Get orders for this month
+    const monthOrders = await prisma.orders.findMany({
+      where: {
+        tenant_id: tenantId,
+        created_at: {
+          gte: monthStart,
+          lte: monthEnd
+        },
+        status: {
+          in: ['completed', 'dispatched']
+        }
+      }
+    });
+
+    // Get purchase orders for this month
+    const monthPurchaseOrders = await prisma.purchaseOrder.findMany({
+      where: {
+        tenantId: tenantId,
+        poDate: {
+          gte: monthStart,
+          lte: monthEnd
+        },
+        status: {
+          in: ['verified', 'converted']
+        }
+      }
+    });
+
+    // Get productions for this month
+    const monthProductions = await prisma.productions.findMany({
+      where: {
+        tenant_id: tenantId,
+        date: {
+          gte: monthStart,
+          lte: monthEnd
+        }
+      }
+    });
+
+    // Calculate revenue for this month
+    const monthRevenue = monthOrders.reduce((sum, order) => 
+      sum + Number(order.quantity_kg || 0) * Number(order.unitPrice || 0), 0);
+
+    // Calculate payables for this month
+    const monthPayables = monthPurchaseOrders.reduce((sum, po) => 
+      sum + Number(po.grandTotal || 0), 0);
+
+    // Calculate operating margin
+    const operatingMargin = monthRevenue > 0 ? ((monthRevenue - monthPayables) / monthRevenue) * 100 : 0;
+
+    // Calculate production efficiency
+    let productionEfficiency = 0;
+    if (monthProductions.length > 0) {
+      const totalProduction = monthProductions.reduce((sum, p) => sum + Number(p.total || 0), 0);
+      const totalRequired = monthProductions.length * 1000; // Assuming 1000kg per day
+      productionEfficiency = totalRequired > 0 ? (totalProduction / totalRequired) * 100 : 0;
+    }
+
+    // Calculate quality score (inverse of issue rate)
+    let qualityScore = 100;
+    if (monthProductions.length > 0) {
+      const totalIssues = monthProductions.reduce((sum, p) => {
+        const spinningIssues = p.spinning?.filter(entry => 
+          entry?.remarks?.toLowerCase().includes('quality') || 
+          entry?.remarks?.toLowerCase().includes('defect')
+        ).length || 0;
+        return sum + spinningIssues;
+      }, 0);
+      const totalEntries = monthProductions.reduce((sum, p) => 
+        sum + (p.spinning?.length || 0), 0);
+      qualityScore = totalEntries > 0 ? 100 - ((totalIssues / totalEntries) * 100) : 100;
+    }
+
+    // Add to trends
+    trends.operatingMarginTrend.push({
+      name: monthStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+      value: Number(operatingMargin.toFixed(2))
+    });
+
+    trends.productionEfficiencyTrend.push({
+      name: monthStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+      value: Number(productionEfficiency.toFixed(2))
+    });
+
+    trends.revenueTrend.push({
+      name: monthStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+      value: Number(monthRevenue.toFixed(0))
+    });
+
+    trends.qualityScoreTrend.push({
+      name: monthStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+      value: Number(qualityScore.toFixed(1))
+    });
+  }
+
+  return trends;
+};
+
 // Get all historical production data for the tenant
 const getAllHistoricalProductions = async (tenantId) => {
   return await prisma.productions.findMany({
@@ -595,6 +709,7 @@ exports.getDashboardSummary = async (user) => {
     const allProductions = await getAllHistoricalProductions(user.tenantId);
 
     // Calculate production metrics
+    let productionEfficiency = 0;
     if (allProductions.length > 0) {
       const { totalProduction, avgDailyProduction, sectionProduction, sectionQuality, sectionDowntime, machineMetrics, productionTrend, productionDays } = await calculateProductionMetrics(user.tenantId, getDateRanges().startOfMonth);
       summary.production = {
@@ -607,6 +722,16 @@ exports.getDashboardSummary = async (user) => {
         productionTrend,
         productionDays
       };
+      // Calculate overall production efficiency (weighted average by section production)
+      const sectionEfficiencies = Object.entries(sectionProduction).map(([section, prod]) => {
+        const required = prod > 0 ? prod / ((sectionQuality[section]?.issueRate || 100) / 100 + 1) : 0;
+        const efficiency = required > 0 ? (prod / required) * 100 : 0;
+        return { section, prod, efficiency };
+      });
+      const totalProd = Object.values(sectionProduction).reduce((a, b) => a + b, 0);
+      if (totalProd > 0) {
+        productionEfficiency = sectionEfficiencies.reduce((sum, s) => sum + (s.prod * s.efficiency), 0) / totalProd;
+      }
     }
 
     // Calculate order metrics
@@ -615,6 +740,8 @@ exports.getDashboardSummary = async (user) => {
       include: { buyer: true }
     });
 
+    // Calculate revenue (sum of completed/dispatched order values)
+    let revenue = 0;
     if (orders.length > 0) {
       summary.orders = {
         totalOrders: orders.length,
@@ -637,6 +764,9 @@ exports.getDashboardSummary = async (user) => {
           .slice(0, 5)
           .map(([name, count]) => ({ name, count }))
       };
+      revenue = orders
+        .filter(o => o.status === 'completed' || o.status === 'dispatched')
+        .reduce((sum, o) => sum + Number(o.quantity_kg || 0) * Number(o.unitPrice || 0), 0);
     }
 
     // Calculate purchase order metrics
@@ -676,6 +806,33 @@ exports.getDashboardSummary = async (user) => {
         }).length
       };
     }
+
+    // Calculate payables (total)
+    let payables = 0;
+    if (purchaseOrders.length > 0) {
+      payables = purchaseOrders.reduce((sum, po) => sum + Number(po.grandTotal || 0), 0);
+    }
+
+    // Calculate operating margin (%)
+    let operatingMargin = 0;
+    if (revenue > 0) {
+      operatingMargin = ((revenue - payables) / revenue) * 100;
+    }
+
+    // Calculate monthly trends
+    const monthlyTrends = await calculateMonthlyTrends(user.tenantId);
+
+    // Add headline KPIs to summary with trend data
+    summary.headlineKPIs = {
+      operatingMargin: Number(operatingMargin.toFixed(2)),
+      productionEfficiency: Number(productionEfficiency.toFixed(2)),
+      operatingMarginTrend: monthlyTrends.operatingMarginTrend,
+      productionEfficiencyTrend: monthlyTrends.productionEfficiencyTrend
+    };
+
+    // Add trend data to summary
+    summary.revenueTrend = monthlyTrends.revenueTrend;
+    summary.qualityScoreTrend = monthlyTrends.qualityScoreTrend;
 
     return summary;
   } catch (error) {

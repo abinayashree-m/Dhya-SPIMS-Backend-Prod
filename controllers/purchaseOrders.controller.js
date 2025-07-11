@@ -2,14 +2,44 @@ const purchaseOrderService = require('../services/purchaseOrders.service');
 
 exports.getAllPurchaseOrders = async (req, res) => {
   try {
-    const purchaseOrders = await purchaseOrderService.getAll(req.user);
+    // Extract pagination and filter parameters from query
+    const {
+      page = 1,
+      limit = 5,
+      search = '',
+      status = '',
+      sortBy = 'createdAt',
+      sortOrder = 'desc'
+    } = req.query;
 
-    if (!purchaseOrders || purchaseOrders.length === 0) {
-      return res.status(200).json({ message: 'No data available', data: [] });
+    // Validate pagination parameters
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit))); // Max 100 items per page
+    const validSortOrder = ['asc', 'desc'].includes(sortOrder) ? sortOrder : 'desc';
+    const validSortBy = ['createdAt', 'poNumber', 'buyerName', 'status', 'grandTotal'].includes(sortBy) ? sortBy : 'createdAt';
+
+    const options = {
+      page: pageNum,
+      limit: limitNum,
+      search: search.trim(),
+      status: status.trim(),
+      sortBy: validSortBy,
+      sortOrder: validSortOrder
+    };
+
+    const result = await purchaseOrderService.getAll(req.user, options);
+
+    if (!result.data || result.data.length === 0) {
+      return res.status(200).json({
+        message: 'No data available',
+        data: [],
+        pagination: result.pagination
+      });
     }
 
-    res.status(200).json(purchaseOrders);
+    res.status(200).json(result);
   } catch (error) {
+    console.error('Error fetching purchase orders:', error);
     res.status(500).json({ error: 'Failed to fetch purchase orders' });
   }
 };
