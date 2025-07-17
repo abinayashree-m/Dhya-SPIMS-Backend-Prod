@@ -10,7 +10,8 @@
     "prisma": "prisma",
     "build": "echo 'skip'",
     "postinstall": "npx prisma generate",
-    "seed": "node prisma/seed.js"
+    "seed": "node prisma/seed.js",
+    "fix-db": "node fix-database.js"
   },
   "keywords": [],
   "author": "",
