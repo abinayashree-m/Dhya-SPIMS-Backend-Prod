@@ -1,8 +1,117 @@
 const { PrismaClient } = require('@prisma/client');
 const { sendBulkMarketingEmail, sendBulkMarketingEmailBatched, filterBouncedEmails, filterBouncedEmailsOptimized } = require('../utils/email');
 const { fetchEmailsByDateRange } = require('../services/resend.service');
+const { getAudienceContacts } = require('../services/resend.service');
 
 const prisma = new PrismaClient();
+
+/**
+ * POST /marketing/send-to-audience
+ * Send campaign to a Resend audience
+ */
+exports.sendToAudience = async (req, res) => {
+  try {
+    console.log('🎯 [SEND-TO-AUDIENCE] Request received:', {
+      body: req.body,
+      headers: req.headers
+    });
+
+    const { audienceId, subject, bodyHtml, tenant_id } = req.body;
+
+    console.log('🎯 [SEND-TO-AUDIENCE] Extracted fields:', {
+      audienceId,
+      subject,
+      bodyHtml: bodyHtml ? 'Present' : 'Missing',
+      tenant_id
+    });
+
+    if (!audienceId || !subject || !bodyHtml || !tenant_id) {
+      console.log('❌ [SEND-TO-AUDIENCE] Missing fields:', {
+        hasAudienceId: !!audienceId,
+        hasSubject: !!subject,
+        hasBodyHtml: !!bodyHtml,
+        hasTenantId: !!tenant_id
+      });
+      return res.status(400).json({ error: 'Missing fields in request body' });
+    }
+
+    console.log(`🎯 Sending campaign to Resend audience: ${audienceId}`);
+
+    // 1. Get contacts from Resend audience
+    const contacts = await getAudienceContacts(audienceId);
+    const toEmails = contacts.map(contact => contact.email);
+
+    if (toEmails.length === 0) {
+      return res.status(400).json({ 
+        error: 'No contacts found in the specified audience',
+        audienceId
+      });
+    }
+
+    console.log(`📧 Found ${toEmails.length} contacts in audience`);
+
+    // 2. Filter out bounced emails
+    const { validEmails, bouncedEmails } = await filterBouncedEmails(toEmails);
+
+    if (validEmails.length === 0) {
+      return res.status(400).json({ 
+        error: 'All emails in the audience are bounced or invalid',
+        bouncedCount: bouncedEmails.length
+      });
+    }
+
+    // 3. Save campaign in DB
+    const campaignRecord = await prisma.campaign.create({
+      data: {
+        name: subject,
+        subject,
+        bodyHtml,
+        recipients: validEmails,
+        tenantId: tenant_id, // Convert from snake_case to camelCase
+      },
+    });
+
+    // 4. Send emails with campaign tracking
+    const emailResults = await sendBulkMarketingEmail({
+      toEmails: validEmails,
+      subject,
+      bodyHtml,
+      campaignId: campaignRecord.id,
+      tenant_id,
+    });
+
+    // 5. Update campaign with results
+    const successCount = emailResults.results.length;
+    const failureCount = emailResults.errors.length;
+
+    await prisma.campaign.update({
+      where: { id: campaignRecord.id },
+      data: {
+        name: `${subject} (${successCount} sent, ${failureCount} failed)`,
+      },
+    });
+
+    console.log(`✅ Campaign sent to audience: ${successCount} sent, ${failureCount} failed`);
+
+    res.status(200).json({
+      message: 'Campaign sent to audience successfully!',
+      campaign: campaignRecord,
+      summary: {
+        audienceId,
+        totalContacts: toEmails.length,
+        validEmails: validEmails.length,
+        bouncedEmails: bouncedEmails.length,
+        sentSuccessfully: successCount,
+        failedToSend: failureCount,
+        bouncedEmailsList: bouncedEmails
+      },
+      emailResults
+    });
+  } catch (err) {
+    console.error('❌ sendToAudience error:', err);
+    res.status(500).json({ error: 'Failed to send campaign to audience' });
+  }
+};
 
 /**
  * POST /marketing/send

@@ -5,6 +5,24 @@ const prisma = new PrismaClient();
 const resend = new Resend(process.env.RESEND_API_KEY_SPIMS);
 
 /**
+ * 🔧 Replace template variables in email content
+ */
+function replaceTemplateVariables(content, variables = {}) {
+  let processedContent = content;
+  
+  // Replace Resend-specific variables
+  processedContent = processedContent.replace(/\{\{\{RESEND_UNSUBSCRIBE_URL\}\}\}/g, '{{{RESEND_UNSUBSCRIBE_URL}}}');
+  
+  // Replace custom variables
+  Object.keys(variables).forEach(key => {
+    const regex = new RegExp(`\\{\\{\\{${key}\\}\\}\\}`, 'g');
+    processedContent = processedContent.replace(regex, variables[key]);
+  });
+  
+  return processedContent;
+}
+
+/**
  * 🔧 Fetch dynamic email signature block based on tenant ID
  */
 async function getEmailSignature(tenant_id) {
@@ -102,8 +120,11 @@ async function sendBulkMarketingEmail({
     throw new Error('Missing fields: toEmails, subject, or bodyHtml');
   }
 
+  // Process template variables
+  const processedBodyHtml = replaceTemplateVariables(bodyHtml);
+
   const fullHtml = `
-    ${bodyHtml}
+    ${processedBodyHtml}
     <hr style="margin-top: 32px; opacity: 0.4;" />
   `;
 
@@ -159,8 +180,11 @@ async function sendBulkMarketingEmailBatched({
     throw new Error('Missing fields: toEmails, subject, or bodyHtml');
   }
 
+  // Process template variables
+  const processedBodyHtml = replaceTemplateVariables(bodyHtml);
+
   const fullHtml = `
-    ${bodyHtml}
+    ${processedBodyHtml}
     <hr style="margin-top: 32px; opacity: 0.4;" />
   `;
 

@@ -3,14 +3,16 @@ const {
   createMailingList,
   getMailingLists,
   deleteMailingList,
-  updateMailingList, // ✅ add this
+  updateMailingList,
+  getMailingListContacts,
 } = require('../controllers/mailingLists.controller');
 
 const router = express.Router();
 
 router.post('/', createMailingList);
 router.get('/', getMailingLists);
-router.put('/:id', updateMailingList); // ✅ define update route
+router.get('/:id/contacts', getMailingListContacts);
+router.put('/:id', updateMailingList);
 router.delete('/:id', deleteMailingList);
 
 module.exports = router;
