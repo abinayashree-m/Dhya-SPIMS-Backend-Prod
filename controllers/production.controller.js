@@ -98,7 +98,19 @@ exports.getProductionByDate = async (req, res) => {
   }
 };
 
-// Create production entry
+// Save production draft (for Save and Continue)
+exports.saveProductionDraft = async (req, res) => {
+  try {
+    console.log('[Production API] Incoming saveProductionDraft data:', req.body);
+    const production = await productionService.saveProductionDraft(req.body, req.user);
+    console.log('[Production API] Response for saveProductionDraft:', production);
+    res.status(200).json(production);
+  } catch (err) {
+    errorResponse(res, 400, err.message);
+  }
+};
+
+// Create production entry (final submit)
 exports.createProduction = async (req, res) => {
   try {
     console.log('[Production API] Incoming createProduction data:', req.body);

@@ -365,20 +365,35 @@ exports.verify = async (id, user) => {
       });
     }
 
-    // Create a new sales order
-    const order = await prisma.order.create({
-      data: {
-        orderNumber: `SO-${Date.now()}`,
-        buyerId: buyer.id,
-        shadeId: shade.id,
-        deliveryDate: existing.poDate || new Date(),
-        quantity: existing.items.reduce((sum, item) => sum + Number(item.quantity), 0),
-        unitPrice: 0,
-        totalAmount: 0,
-        status: 'pending',
-        tenantId: user.tenantId,
-      },
-    });
+      // Create a new sales order
+  console.log('🔄 [CONVERT] Creating Sales Order...');
+  
+  const orderData = {
+    orderNumber: `SO-${Date.now()}`,
+    buyerId: buyer.id,
+    shadeId: shade.id,
+    deliveryDate: existing.poDate || new Date(),
+    quantity: existing.items.reduce((sum, item) => sum + Number(item.quantity), 0),
+    unitPrice: 0,
+    totalAmount: 0,
+    status: 'pending',
+    tenantId: user.tenantId,
+  };
+  
+  console.log('🔄 [CONVERT] Sales Order data:', JSON.stringify(orderData, null, 2));
+  
+  const order = await prisma.order.create({
+    data: orderData,
+  });
+  
+  console.log('✅ [CONVERT] Sales Order created successfully:', {
+    id: order.id,
+    orderNumber: order.orderNumber,
+    buyerId: order.buyerId,
+    shadeId: order.shadeId,
+    quantity: order.quantity,
+    status: order.status
+  });
 
     // Update PO status and link to SO
     const updatedPO = await prisma.purchaseOrder.update({
@@ -420,16 +435,39 @@ exports.verify = async (id, user) => {
 
 // ✅ Convert PO to Sales Order
 exports.convertToSalesOrder = async (id, user, data) => {
-  const existing = await prisma.purchaseOrder.findFirst({
-    where: { id, tenantId: user.tenantId },
-    include: { items: true }
-  });
+  try {
+    console.log('🔄 [CONVERT] Starting PO to SO conversion...');
+    console.log('🔄 [CONVERT] PO ID:', id);
+    console.log('🔄 [CONVERT] User:', { id: user.id, email: user.email, tenantId: user.tenantId });
+    console.log('🔄 [CONVERT] Conversion data:', JSON.stringify(data, null, 2));
 
-  if (!existing) {
-    throw new Error('Purchase Order not found or access denied.');
-  }
+    const existing = await prisma.purchaseOrder.findFirst({
+      where: { id, tenantId: user.tenantId },
+      include: { items: true }
+    });
+
+    if (!existing) {
+      console.error('❌ [CONVERT] Purchase Order not found or access denied');
+      console.error('❌ [CONVERT] PO ID:', id, 'Tenant ID:', user.tenantId);
+      throw new Error('Purchase Order not found or access denied.');
+    }
+
+    console.log('✅ [CONVERT] Found existing PO:', {
+      id: existing.id,
+      poNumber: existing.poNumber,
+      status: existing.status,
+      buyerName: existing.buyerName,
+      itemsCount: existing.items.length
+    });
 
   // 🔄 Find / create buyer
+  console.log('🔄 [CONVERT] Looking up buyer...');
+  console.log('🔄 [CONVERT] Buyer search criteria:', {
+    buyerId: existing.buyerId,
+    buyerName: existing.buyerName,
+    buyerEmail: existing.buyerEmail
+  });
+
   let buyer = existing.buyerId
     ? await prisma.buyer.findUnique({ where: { id: existing.buyerId } })
     : await prisma.buyer.findFirst({
@@ -440,6 +478,7 @@ exports.convertToSalesOrder = async (id, user, data) => {
       });
 
   if (!buyer) {
+    console.log('🔄 [CONVERT] Buyer not found, creating new buyer...');
     buyer = await prisma.buyer.create({
       data: {
         name: existing.buyerName || 'Default Buyer',
@@ -448,9 +487,19 @@ exports.convertToSalesOrder = async (id, user, data) => {
         address: existing.buyerAddress,
       },
     });
+    console.log('✅ [CONVERT] Created new buyer:', { id: buyer.id, name: buyer.name });
+  } else {
+    console.log('✅ [CONVERT] Found existing buyer:', { id: buyer.id, name: buyer.name });
   }
 
   // 🔄 Find / create shade
+  console.log('🔄 [CONVERT] Looking up shade...');
+  console.log('🔄 [CONVERT] Shade search criteria:', {
+    shadeId: data.shade_id,
+    shadeNo: existing.items[0]?.shadeNo,
+    tenantId: user.tenantId
+  });
+
   let shade = data.shade_id
     ? await prisma.shade.findUnique({ where: { id: data.shade_id } })
     : await prisma.shade.findFirst({
@@ -461,6 +510,7 @@ exports.convertToSalesOrder = async (id, user, data) => {
       });
 
   if (!shade) {
+    console.log('🔄 [CONVERT] Shade not found, creating new shade...');
     shade = await prisma.shade.create({
       data: {
         shadeCode: existing.items[0]?.shadeNo || 'DEFAULT',
@@ -468,7 +518,17 @@ exports.convertToSalesOrder = async (id, user, data) => {
         tenantId: user.tenantId,
       },
     });
+    console.log('✅ [CONVERT] Created new shade:', { id: shade.id, shadeCode: shade.shadeCode });
+  } else {
+    console.log('✅ [CONVERT] Found existing shade:', { id: shade.id, shadeCode: shade.shadeCode });
   }
+
+  // Debug count values
+  console.log('🔄 [CONVERT] Count debugging:', {
+    poItemCount: existing.items[0]?.count,
+    conversionDataCount: data?.count,
+    finalCount: existing.items[0]?.count || data?.count
+  });
 
   // Create a new sales order
   const order = await prisma.order.create({
@@ -482,23 +542,37 @@ exports.convertToSalesOrder = async (id, user, data) => {
       totalAmount: 0,
       status: 'pending',
       tenantId: user.tenantId,
+      count: existing.items[0]?.count || data?.count, // ✅ Transfer count from PO items or conversion data
+      realisation: data?.realisation || 0, // ✅ Transfer realisation from conversion data
     },
   });
 
+  console.log('✅ [CONVERT] Created sales order with count:', order.count);
+
   // Update PO status and link to SO
+  console.log('🔄 [CONVERT] Updating PO status to converted...');
+  
   const updatedPO = await prisma.purchaseOrder.update({
     where: { id },
     data: {
-      status: 'verified',
+      status: 'converted',
       linkedSalesOrderId: order.id,
     },
     include: {
       items: true,
     },
   });
+  
+  console.log('✅ [CONVERT] PO status updated successfully:', {
+    poId: updatedPO.id,
+    poNumber: updatedPO.poNumber,
+    newStatus: updatedPO.status,
+    linkedSalesOrderId: updatedPO.linkedSalesOrderId
+  });
 
   // Send email if buyer has an email address
   if (existing.buyerEmail) {
+    console.log('🔄 [CONVERT] Sending authorization email to:', existing.buyerEmail);
     try {
       await sendPOAuthorizationEmail({
         to: existing.buyerEmail,
@@ -510,11 +584,35 @@ exports.convertToSalesOrder = async (id, user, data) => {
         poDate: existing.poDate,
         deliveryDate: order.deliveryDate,
       });
+      console.log('✅ [CONVERT] Authorization email sent successfully');
     } catch (error) {
-      console.error('Failed to send PO authorization email:', error);
+      console.error('❌ [CONVERT] Failed to send PO authorization email:', error);
       // Don't throw the error - we don't want to fail the PO conversion if email fails
     }
+  } else {
+    console.log('ℹ️ [CONVERT] No buyer email found, skipping email notification');
   }
 
-  return updatedPO;
+  console.log('🎉 [CONVERT] PO to SO conversion completed successfully!');
+  console.log('🎉 [CONVERT] Final result:', {
+    poId: updatedPO.id,
+    poNumber: updatedPO.poNumber,
+    soId: order.id,
+    soNumber: order.orderNumber,
+    buyerId: buyer.id,
+    shadeId: shade.id
+  });
+
+    return updatedPO;
+  } catch (error) {
+    console.error('❌ [CONVERT] PO to SO conversion failed!');
+    console.error('❌ [CONVERT] Error details:', {
+      message: error.message,
+      stack: error.stack,
+      poId: id,
+      userId: user.id,
+      tenantId: user.tenantId
+    });
+    throw error;
+  }
 };

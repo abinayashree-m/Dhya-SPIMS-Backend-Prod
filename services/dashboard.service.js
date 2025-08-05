@@ -1,5 +1,5 @@
-const { PrismaClient, Decimal } = require('@prisma/client');
-const prisma = new PrismaClient();
+const { prisma } = require('../prisma/client');
+const { Decimal } = require('@prisma/client/runtime/library');
 
 // Helper function to get date ranges
 const getDateRanges = () => {
@@ -27,9 +27,9 @@ const calculatePercentageChange = (current, previous) => {
 // Helper function to calculate pending fiber shortages
 const calculatePendingFiberShortages = async (tenantId) => {
   // Get all pending and in-progress orders
-  const activeOrders = await prisma.orders.findMany({
+  const activeOrders = await prisma.order.findMany({
     where: {
-      tenant_id: tenantId,
+      tenantId: tenantId,
       status: {
         in: ['pending', 'in_progress']
       }
@@ -37,7 +37,7 @@ const calculatePendingFiberShortages = async (tenantId) => {
     include: {
       shade: {
         include: {
-          shade_fibres: {
+          shadeFibres: {
             include: {
               fibre: true
             }
@@ -50,14 +50,14 @@ const calculatePendingFiberShortages = async (tenantId) => {
   const shortages = new Set();
 
   for (const order of activeOrders) {
-    const requiredQty = new Decimal(order.quantity_kg).div(order.realisation || 100).mul(100);
+    const requiredQty = new Decimal(order.quantity).div(order.realisation || 100).mul(100);
 
-    for (const sf of order.shade.shade_fibres) {
+    for (const sf of order.shade.shadeFibres) {
       const requiredFibreQty = requiredQty.mul(sf.percentage).div(100);
-      const availableQty = new Decimal(sf.fibre.stock_kg);
+      const availableQty = new Decimal(sf.fibre.stockKg);
 
       if (availableQty.lessThan(requiredFibreQty)) {
-        shortages.add(sf.fibre_id);
+        shortages.add(sf.fibreId);
       }
     }
   }
@@ -136,7 +136,7 @@ const calculateProductionMetrics = async (tenantId, startOfMonth) => {
   // Get all productions for the tenant
   const productions = await prisma.productions.findMany({
     where: {
-      tenant_id: tenantId,
+      tenantId: tenantId,
       date: {
         gte: startOfMonth
       }
@@ -147,7 +147,7 @@ const calculateProductionMetrics = async (tenantId, startOfMonth) => {
   });
 
   // Calculate total production
-  const totalProduction = productions.reduce((sum, p) => sum + Number(p.total || 0), 0);
+  const totalProduction = productions.reduce((sum, p) => sum + Number(p.value || 0), 0);
 
   // Calculate daily averages
   const uniqueDays = new Set(productions.map(p => p.date.toISOString().split('T')[0]));
@@ -591,10 +591,10 @@ const calculateMonthlyTrends = async (tenantId) => {
     const monthKey = monthStart.toISOString().slice(0, 7); // YYYY-MM format
 
     // Get orders for this month
-    const monthOrders = await prisma.orders.findMany({
+    const monthOrders = await prisma.order.findMany({
       where: {
-        tenant_id: tenantId,
-        created_at: {
+        tenantId: tenantId,
+        createdAt: {
           gte: monthStart,
           lte: monthEnd
         },
@@ -621,7 +621,7 @@ const calculateMonthlyTrends = async (tenantId) => {
     // Get productions for this month
     const monthProductions = await prisma.productions.findMany({
       where: {
-        tenant_id: tenantId,
+        tenantId: tenantId,
         date: {
           gte: monthStart,
           lte: monthEnd
@@ -631,7 +631,7 @@ const calculateMonthlyTrends = async (tenantId) => {
 
     // Calculate revenue for this month
     const monthRevenue = monthOrders.reduce((sum, order) => 
-      sum + Number(order.quantity_kg || 0) * Number(order.unitPrice || 0), 0);
+      sum + Number(order.quantity || 0) * Number(order.unitPrice || 0), 0);
 
     // Calculate payables for this month
     const monthPayables = monthPurchaseOrders.reduce((sum, po) => 
@@ -643,7 +643,7 @@ const calculateMonthlyTrends = async (tenantId) => {
     // Calculate production efficiency
     let productionEfficiency = 0;
     if (monthProductions.length > 0) {
-      const totalProduction = monthProductions.reduce((sum, p) => sum + Number(p.total || 0), 0);
+      const totalProduction = monthProductions.reduce((sum, p) => sum + Number(p.value || 0), 0);
       const totalRequired = monthProductions.length * 1000; // Assuming 1000kg per day
       productionEfficiency = totalRequired > 0 ? (totalProduction / totalRequired) * 100 : 0;
     }
@@ -651,16 +651,11 @@ const calculateMonthlyTrends = async (tenantId) => {
     // Calculate quality score (inverse of issue rate)
     let qualityScore = 100;
     if (monthProductions.length > 0) {
-      const totalIssues = monthProductions.reduce((sum, p) => {
-        const spinningIssues = p.spinning?.filter(entry => 
-          entry?.remarks?.toLowerCase().includes('quality') || 
-          entry?.remarks?.toLowerCase().includes('defect')
-        ).length || 0;
-        return sum + spinningIssues;
-      }, 0);
-      const totalEntries = monthProductions.reduce((sum, p) => 
-        sum + (p.spinning?.length || 0), 0);
-      qualityScore = totalEntries > 0 ? 100 - ((totalIssues / totalEntries) * 100) : 100;
+      // Since we don't have detailed quality data in the current schema,
+      // we'll use a simple calculation based on production efficiency
+      const totalProduction = monthProductions.reduce((sum, p) => sum + Number(p.value || 0), 0);
+      const totalRequired = monthProductions.length * 1000;
+      qualityScore = totalRequired > 0 ? Math.min((totalProduction / totalRequired) * 100, 100) : 100;
     }
 
     // Add to trends
@@ -691,7 +686,7 @@ const calculateMonthlyTrends = async (tenantId) => {
 // Get all historical production data for the tenant
 const getAllHistoricalProductions = async (tenantId) => {
   return await prisma.productions.findMany({
-    where: { tenant_id: tenantId },
+    where: { tenantId: tenantId },
     orderBy: { date: 'asc' }
   });
 };
@@ -735,8 +730,8 @@ exports.getDashboardSummary = async (user) => {
     }
 
     // Calculate order metrics
-    const orders = await prisma.orders.findMany({
-      where: { tenant_id: user.tenantId },
+    const orders = await prisma.order.findMany({
+      where: { tenantId: user.tenantId },
       include: { buyer: true }
     });
 

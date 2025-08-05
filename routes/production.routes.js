@@ -222,9 +222,53 @@ router.get('/date/:date', controller.getProductionByDate);
 
 /**
  * @swagger
+ * /api/production/draft:
+ *   post:
+ *     summary: Save production draft (for Save and Continue)
+ *     tags: [Productions]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - date
+ *             properties:
+ *               date:
+ *                 type: string
+ *                 format: date
+ *               blow_room:
+ *                 type: object
+ *               carding:
+ *                 type: array
+ *               drawing:
+ *                 type: array
+ *               framing:
+ *                 type: array
+ *               simplex:
+ *                 type: array
+ *               spinning:
+ *                 type: array
+ *               autoconer:
+ *                 type: array
+ *     responses:
+ *       200:
+ *         description: Production draft saved successfully
+ *       400:
+ *         description: Invalid input data
+ *       401:
+ *         description: Unauthorized
+ */
+router.post('/draft', controller.saveProductionDraft);
+
+/**
+ * @swagger
  * /api/production:
  *   post:
- *     summary: Create a new production entry
+ *     summary: Create a new production entry (final submit)
  *     tags: [Productions]
  *     security:
  *       - bearerAuth: []

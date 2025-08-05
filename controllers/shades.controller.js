@@ -11,10 +11,7 @@ exports.createShade = async (req, res) => {
     }
 
     // Create the shade with the user's tenant ID
-    const shade = await shadesService.createShade({
-      ...req.body,
-      tenantId: req.user.tenantId
-    });
+    const shade = await shadesService.createShade(req.body, req.user.tenantId);
     
     res.status(201).json(shade);
   } catch (error) {
@@ -24,9 +21,14 @@ exports.createShade = async (req, res) => {
 };
 
 // ✅ Get all shades
-exports.getAllShades = async (_req, res) => {
+exports.getAllShades = async (req, res) => {
   try {
-    const shades = await shadesService.getAllShades();
+    const tenantId = req.user.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant ID is required' });
+    }
+    
+    const shades = await shadesService.getAllShades(tenantId);
     res.json(shades);
   } catch (error) {
     console.error('Error fetching shades:', error);
@@ -37,7 +39,12 @@ exports.getAllShades = async (_req, res) => {
 // ✅ Get shade by ID
 exports.getShadeById = async (req, res) => {
   try {
-    const shade = await shadesService.getShadeById(req.params.id);
+    const tenantId = req.user.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant ID is required' });
+    }
+    
+    const shade = await shadesService.getShadeById(req.params.id, tenantId);
     res.json(shade);
   } catch (error) {
     console.error('Error fetching shade:', error);
@@ -63,7 +70,25 @@ exports.deleteShade = async (req, res) => {
     await shadesService.deleteShade(id, req.user.tenantId);
     res.json({ message: 'Shade deleted successfully' });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to delete shade' });
+    console.error('Error in deleteShade controller:', error);
+    
+    // Check if it's a specific error about orders
+    if (error.message && error.message.includes('used in orders')) {
+      return res.status(409).json({ 
+        error: error.message,
+        code: 'SHADE_IN_USE'
+      });
+    }
+    
+    // Check if it's a Prisma foreign key constraint error
+    if (error.code === 'P2003') {
+      return res.status(409).json({ 
+        error: 'Cannot delete shade: it is referenced by other data in the system',
+        code: 'SHADE_IN_USE'
+      });
+    }
+    
+    res.status(500).json({ error: error.message || 'Failed to delete shade' });
   }
 };
 

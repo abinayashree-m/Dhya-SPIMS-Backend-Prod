@@ -11,7 +11,9 @@
     "build": "echo 'skip'",
     "postinstall": "npx prisma generate",
     "seed": "node prisma/seed.js",
-    "fix-db": "node fix-database.js"
+    "fix-db": "node fix-database.js",
+    "test-db": "node test-db-connection.js",
+    "check-webhook": "node check-webhook-status.js"
   },
   "keywords": [],
   "author": "",
