@@ -1,29 +1,35 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const { prisma } = require('../prisma/client');
 
 // ✅ Create a new shade with fibres and raw cotton composition
-const createShade = async (data) => {
+const createShade = async (data, tenantId) => {
   try {
-    const { fibres = [], rawCottonCompositions = [], ...shadeData } = data;
+    const { blend_composition = [], raw_cotton_compositions = [], ...shadeData } = data;
+
+    // Map snake_case to camelCase field names
+    const mappedShadeData = {
+      shadeCode: shadeData.shade_code,
+      shadeName: shadeData.shade_name,
+      percentage: shadeData.percentage,
+      description: shadeData.description
+    };
 
     // Create the shade with fibres and cotton compositions
     const shade = await prisma.shade.create({
       data: {
-        ...shadeData,
-        shadeFibres: fibres.length > 0 ? {
-          create: fibres.map(fibre => ({
-            fibreId: fibre.fibreId,
+        ...mappedShadeData,
+        tenantId: tenantId,
+        shadeFibres: blend_composition.length > 0 ? {
+          create: blend_composition.map(fibre => ({
+            fibreId: fibre.fibre_id,
             percentage: fibre.percentage
           }))
         } : undefined,
-        rawCottonCompositions: rawCottonCompositions.length > 0 ? {
-          create: await Promise.all(rawCottonCompositions.map(async (composition) => {
-            // Create cotton record if it doesn't exist
-            const cotton = await prisma.cotton.upsert({
-              where: { id: composition.cottonId || 'temp' },
-              update: {},
-              create: {
-                lotNumber: composition.lotNumber || 'DEFAULT',
+        rawCottonCompositions: raw_cotton_compositions.length > 0 ? {
+          create: await Promise.all(raw_cotton_compositions.map(async (composition) => {
+            // Create a new cotton record for RAW COTTON
+            const cotton = await prisma.cotton.create({
+              data: {
+                lotNumber: composition.lot_number || 'DEFAULT',
                 grade: composition.grade || 'DEFAULT',
                 source: composition.source || 'DEFAULT',
                 notes: composition.notes || 'Default cotton record'
@@ -61,31 +67,42 @@ const createShade = async (data) => {
 };
 
 // ✅ Update a shade and replace its fibre composition
-async function updateShade(id, data) {
+async function updateShade(id, data, tenantId) {
   try {
-    const { fibres, ...updateData } = data;
+    const { blend_composition, ...updateData } = data;
+
+    // Map snake_case to camelCase field names
+    const mappedUpdateData = {
+      shadeCode: updateData.shade_code,
+      shadeName: updateData.shade_name,
+      percentage: updateData.percentage,
+      description: updateData.description
+    };
 
     // Update the shade
     const shade = await prisma.shade.update({
-      where: { id },
-      data: updateData
+      where: { 
+        id,
+        tenantId: tenantId
+      },
+      data: mappedUpdateData
     });
 
     // Update fibres if provided
-    if (fibres) {
+    if (blend_composition) {
       // Delete existing fibres
       await prisma.shadeFibre.deleteMany({
         where: { shadeId: id }
       });
 
       // Create new fibres
-      if (fibres.length > 0) {
+      if (blend_composition.length > 0) {
         await Promise.all(
-          fibres.map(fibre =>
+          blend_composition.map(fibre =>
             prisma.shadeFibre.create({
               data: {
                 shadeId: id,
-                fibreId: fibre.fibreId,
+                fibreId: fibre.fibre_id,
                 percentage: fibre.percentage
               }
             })
@@ -101,9 +118,12 @@ async function updateShade(id, data) {
 }
 
 // ✅ Get all shades
-const getAllShades = async () => {
+const getAllShades = async (tenantId) => {
   try {
     const shades = await prisma.shade.findMany({
+      where: {
+        tenantId: tenantId
+      },
       orderBy: { createdAt: 'desc' },
       include: {
         shadeFibres: {
@@ -123,13 +143,30 @@ const getAllShades = async () => {
       }
     });
 
-    // Transform the response to include blend_composition
+    // Transform the response to include blend_composition with snake_case field names
     return shades.map(shade => ({
-      ...shade,
-      blendComposition: shade.shadeFibres.map(fibre => ({
-        fibreId: fibre.fibreId,
+      id: shade.id,
+      shade_code: shade.shadeCode,
+      shade_name: shade.shadeName,
+      percentage: shade.percentage,
+      description: shade.description,
+      createdAt: shade.createdAt,
+      updatedAt: shade.updatedAt,
+      tenantId: shade.tenantId,
+      blend_composition: shade.shadeFibres.map(fibre => ({
+        fibre_id: fibre.fibreId,
         percentage: fibre.percentage,
-        fibre: fibre.fibre
+        fibre: {
+          ...fibre.fibre,
+          category: fibre.fibre.category
+        }
+      })),
+      raw_cotton_compositions: shade.rawCottonCompositions.map(composition => ({
+        percentage: composition.percentage,
+        lot_number: composition.cotton?.lotNumber,
+        grade: composition.cotton?.grade,
+        source: composition.cotton?.source,
+        notes: composition.cotton?.notes
       }))
     }));
   } catch (error) {
@@ -139,14 +176,21 @@ const getAllShades = async () => {
 };
 
 // ✅ Get shade by ID
-const getShadeById = async (id) => {
+const getShadeById = async (id, tenantId) => {
   try {
     const shade = await prisma.shade.findUnique({
-      where: { id },
+      where: { 
+        id,
+        tenantId: tenantId
+      },
       include: {
         shadeFibres: {
           include: {
-            fibre: true
+            fibre: {
+              include: {
+                category: true
+              }
+            }
           }
         },
         rawCottonCompositions: {
@@ -161,13 +205,30 @@ const getShadeById = async (id) => {
       throw new Error('Shade not found');
     }
 
-    // Transform the response to include blend_composition
+    // Transform the response to include blend_composition with snake_case field names
     return {
-      ...shade,
-      blendComposition: shade.shadeFibres.map(fibre => ({
-        fibreId: fibre.fibreId,
+      id: shade.id,
+      shade_code: shade.shadeCode,
+      shade_name: shade.shadeName,
+      percentage: shade.percentage,
+      description: shade.description,
+      createdAt: shade.createdAt,
+      updatedAt: shade.updatedAt,
+      tenantId: shade.tenantId,
+      blend_composition: shade.shadeFibres.map(fibre => ({
+        fibre_id: fibre.fibreId,
         percentage: fibre.percentage,
-        fibre: fibre.fibre
+        fibre: {
+          ...fibre.fibre,
+          category: fibre.fibre.category
+        }
+      })),
+      raw_cotton_compositions: shade.rawCottonCompositions.map(composition => ({
+        percentage: composition.percentage,
+        lot_number: composition.cotton?.lotNumber,
+        grade: composition.cotton?.grade,
+        source: composition.cotton?.source,
+        notes: composition.cotton?.notes
       }))
     };
   } catch (error) {
@@ -177,24 +238,29 @@ const getShadeById = async (id) => {
 };
 
 // ✅ Delete shade and its composition
-const deleteShade = async (id) => {
+const deleteShade = async (id, tenantId) => {
   try {
-    // Delete associated fibres first
+    // Delete associated shade-fibre relationships (not the fibres themselves)
     await prisma.shadeFibre.deleteMany({
       where: { shadeId: id }
     });
-
     // Delete associated raw cotton compositions
     await prisma.rawCottonComposition.deleteMany({
       where: { shadeId: id }
     });
-
     // Delete the shade
     return await prisma.shade.delete({
-      where: { id }
+      where: { 
+        id,
+        tenantId: tenantId
+      }
     });
   } catch (error) {
     console.error('Error deleting shade:', error);
+    // Preserve the original error structure for proper handling
+    if (error.code === 'P2003') {
+      throw error; // Re-throw the original Prisma error
+    }
     throw new Error(error.message || 'Failed to delete shade');
   }
 };

@@ -1,8 +1,6 @@
-const { PrismaClient } = require('@prisma/client');
+const { prisma } = require('../prisma/client');
 const { validate: isUUID } = require('uuid');
 const { Decimal } = require('@prisma/client/runtime/library');
-
-const prisma = new PrismaClient();
 
 /**
  * ✅ Create a new fibre (with optional categoryId)
@@ -82,6 +80,30 @@ exports.deleteFibre = async (id) => {
 exports.getAllFibreCategories = async () => {
   return await prisma.fibreCategory.findMany({
     orderBy: { name: 'asc' },
+  });
+};
+
+/**
+ * ✅ Get fibre category by ID
+ */
+exports.getFibreCategoryById = async (id) => {
+  if (!isUUID(id)) throw new Error(`Invalid UUID for category ID: ${id}`);
+  
+  return await prisma.fibreCategory.findUnique({
+    where: { id },
+  });
+};
+
+/**
+ * ✅ Get fibre category by name
+ */
+exports.getFibreCategoryByName = async (name) => {
+  if (!name || typeof name !== 'string') {
+    throw new Error('Category name is required and must be a string');
+  }
+  
+  return await prisma.fibreCategory.findUnique({
+    where: { name: name.trim() },
   });
 };
 

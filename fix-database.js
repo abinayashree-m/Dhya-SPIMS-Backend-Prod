@@ -1,15 +1,13 @@
-const { PrismaClient } = require('@prisma/client');
+const { prisma, connectWithRetry } = require('./prisma/client');
 require('dotenv').config();
-
-const prisma = new PrismaClient();
 
 async function fixDatabase() {
   try {
     console.log('🔧 [DATABASE] Starting database fix...');
     
-    // Test database connection
+    // Test database connection with retry logic
     console.log('🔧 [DATABASE] Testing database connection...');
-    await prisma.$connect();
+    await connectWithRetry();
     console.log('✅ [DATABASE] Database connection successful');
     
     // Drop the MailingListRecipient table

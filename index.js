@@ -1,12 +1,12 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
-const { PrismaClient } = require('@prisma/client');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const loadRoutes = require('./loadRoutes');
 const errorMiddleware = require('./middlewares/error.middleware');
 const setupSwagger = require('./swagger');
+const { prisma, connectWithRetry, healthCheck } = require('./prisma/client');
 
 dotenv.config();
 
@@ -22,7 +22,6 @@ console.log('🚀 [SERVER] Environment check:', {
 });
 
 const app = express();
-const prisma = new PrismaClient();
 
 // ✅ Middlewares
 app.use(helmet());
@@ -43,10 +42,23 @@ app.use(express.json({ limit: '10mb' }));
 app.options('*', cors()); // handle preflight requests
 app.use(morgan('dev'));
 
-// ✅ Health Check
-app.get('/', (req, res) => {
+// ✅ Health Check with database status
+app.get('/', async (req, res) => {
   console.log('💓 [SERVER] Health check requested');
-  res.send('SPIMS API is running ✅');
+  const dbHealth = await healthCheck();
+  
+  if (dbHealth.status === 'healthy') {
+    res.send('SPIMS API is running ✅ - Database: Connected');
+  } else {
+    console.error('❌ [HEALTH] Database health check failed:', dbHealth.error);
+    res.status(500).send('SPIMS API is running ⚠️ - Database: Disconnected');
+  }
+});
+
+// ✅ Add database connection to request context
+app.use((req, res, next) => {
+  req.prisma = prisma;
+  next();
 });
 
 console.log('🚀 [SERVER] Express app configured, loading routes...');
@@ -62,12 +74,27 @@ setupSwagger(app);
 // Error handling
 app.use(errorMiddleware);
 
-// ✅ Start Server
+// ✅ Start Server with database connection
 const PORT = process.env.PORT || 5001;
-app.listen(PORT, () => {
-  console.log('✅ [SERVER] === SPIMS SERVER STARTED SUCCESSFULLY ===');
-  console.log(`✅ [SERVER] Server is running on port ${PORT}`);
-  console.log(`✅ [SERVER] SPIMS SWAGGER API running at: http://localhost:${PORT}/docs/`);
-  console.log(`✅ [SERVER] Health check available at: http://localhost:${PORT}/health`);
-  console.log('✅ [SERVER] === READY TO ACCEPT REQUESTS ===');
-});
+
+async function startServer() {
+  try {
+    // Connect to database first with retry logic
+    await connectWithRetry();
+    
+    // Start the server
+    app.listen(PORT, () => {
+      console.log('✅ [SERVER] === SPIMS SERVER STARTED SUCCESSFULLY ===');
+      console.log(`✅ [SERVER] Server is running on port ${PORT}`);
+      console.log(`✅ [SERVER] SPIMS SWAGGER API running at: http://localhost:${PORT}/docs/`);
+      console.log(`✅ [SERVER] Health check available at: http://localhost:${PORT}/health`);
+      console.log('✅ [SERVER] === READY TO ACCEPT REQUESTS ===');
+    });
+    
+  } catch (error) {
+    console.error('❌ [SERVER] Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+startServer();

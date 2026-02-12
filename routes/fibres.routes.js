@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const fibreController = require('../controllers/fibres.controller');
+const upload = require('../middlewares/upload.middleware');
 
 /**
  * @swagger
@@ -95,6 +96,60 @@ router.put('/categories/:id', fibreController.updateFibreCategory);
  */
 router.delete('/categories/:id', fibreController.deleteFibreCategory);
 
+/**
+ * @swagger
+ * /fibres/categories/bulk-upload:
+ *   post:
+ *     summary: Bulk upload fibre categories from Excel file
+ *     tags: [Fibre Categories]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Excel file (.xlsx, .xls) or CSV file
+ *     responses:
+ *       201:
+ *         description: Categories uploaded successfully
+ *       400:
+ *         description: Invalid file or data
+ *       500:
+ *         description: Server error
+ */
+router.post('/categories/bulk-upload', upload.single('file'), fibreController.bulkUploadCategories);
+
+/**
+ * @swagger
+ * /fibres/categories/preview:
+ *   post:
+ *     summary: Preview fibre categories from Excel file (without saving)
+ *     tags: [Fibre Categories]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Excel file (.xlsx, .xls) or CSV file
+ *     responses:
+ *       200:
+ *         description: Preview generated successfully
+ *       400:
+ *         description: Invalid file or data
+ *       500:
+ *         description: Server error
+ */
+router.post('/categories/preview', upload.single('file'), fibreController.previewCategories);
+
 // -----------------------------
 // Fibre Routes
 // -----------------------------
@@ -131,6 +186,91 @@ router.delete('/categories/:id', fibreController.deleteFibreCategory);
  *         description: Fibre created successfully
  */
 router.post('/', fibreController.createFibre);
+
+/**
+ * @swagger
+ * /fibres/bulk-upload:
+ *   post:
+ *     summary: Bulk upload fibres from Excel file
+ *     tags: [Fibres]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Excel file (.xlsx, .xls) with fibre data
+ *     responses:
+ *       201:
+ *         description: Bulk upload completed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 createdCount:
+ *                   type: number
+ *                 errorCount:
+ *                   type: number
+ *                 errors:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       row:
+ *                         type: number
+ *                       reason:
+ *                         type: string
+ *                 created:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       fibreCode:
+ *                         type: string
+ *                       fibreName:
+ *                         type: string
+ *       400:
+ *         description: No file uploaded or invalid file format
+ *       500:
+ *         description: Server error processing file
+ */
+router.post('/bulk-upload', upload.single('file'), fibreController.bulkUploadFibres);
+
+/**
+ * @swagger
+ * /fibres/preview:
+ *   post:
+ *     summary: Preview fibres from Excel file (without saving)
+ *     tags: [Fibres]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Excel file (.xlsx, .xls) or CSV file
+ *     responses:
+ *       200:
+ *         description: Preview generated successfully
+ *       400:
+ *         description: Invalid file or data
+ *       500:
+ *         description: Server error
+ */
+router.post('/preview', upload.single('file'), fibreController.previewFibres);
 
 /**
  * @swagger

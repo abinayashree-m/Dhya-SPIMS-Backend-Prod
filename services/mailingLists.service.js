@@ -124,6 +124,9 @@ exports.createMailingListService = async (name, buyerIds = [], recipients = []) 
 exports.getMailingListsService = async () => {
   try {
     const lists = await prisma.mailingList.findMany({
+      orderBy: {
+        createdAt: 'desc' // Show most recently created first
+      },
       include: {
         mailingListBuyers: {
           include: {

@@ -117,8 +117,21 @@ const bulkImportOrders = async (req, res) => {
 
 const getAllOrders = async (req, res) => {
   try {
-    const orders = await orderService.getAllOrders();
-    res.json(orders);
+    const tenantId = req.user.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant ID is required' });
+    }
+    
+    // Extract pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search;
+    const status = req.query.status;
+    const sortBy = req.query.sortBy || 'created_at';
+    const sortOrder = req.query.sortOrder || 'desc';
+    
+    const result = await orderService.getAllOrders(tenantId, { page, limit, search, status, sortBy, sortOrder });
+    res.json(result);
   } catch (error) {
     console.error('Error fetching orders:', error);
     res.status(500).json({ error: error.message });
@@ -127,7 +140,12 @@ const getAllOrders = async (req, res) => {
 
 const getOrderById = async (req, res) => {
   try {
-    const order = await orderService.getOrderById(req.params.id);
+    const tenantId = req.user.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant ID is required' });
+    }
+    
+    const order = await orderService.getOrderById(req.params.id, tenantId);
     if (!order) {
       return res.status(404).json({ error: 'Order not found' });
     }
@@ -140,7 +158,12 @@ const getOrderById = async (req, res) => {
 
 const createOrder = async (req, res) => {
   try {
-    const order = await orderService.createOrder(req.body);
+    const tenantId = req.user.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant ID is required' });
+    }
+    
+    const order = await orderService.createOrder(req.body, tenantId);
     res.status(201).json(order);
   } catch (error) {
     console.error('Error creating order:', error);
@@ -150,7 +173,12 @@ const createOrder = async (req, res) => {
 
 const updateOrder = async (req, res) => {
   try {
-    const order = await orderService.updateOrder(req.params.id, req.body);
+    const tenantId = req.user.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant ID is required' });
+    }
+    
+    const order = await orderService.updateOrder(req.params.id, req.body, tenantId);
     res.json(order);
   } catch (error) {
     console.error('Error updating order:', error);
@@ -160,8 +188,13 @@ const updateOrder = async (req, res) => {
 
 const updateOrderStatus = async (req, res) => {
   try {
+    const tenantId = req.user.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant ID is required' });
+    }
+    
     const { status } = req.body;
-    const order = await orderService.updateOrderStatus(req.params.id, status);
+    const order = await orderService.updateOrderStatus(req.params.id, status, tenantId);
     res.json(order);
   } catch (error) {
     console.error('Error updating order status:', error);
@@ -171,7 +204,12 @@ const updateOrderStatus = async (req, res) => {
 
 const deleteOrder = async (req, res) => {
   try {
-    await orderService.deleteOrder(req.params.id);
+    const tenantId = req.user.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant ID is required' });
+    }
+    
+    await orderService.deleteOrder(req.params.id, tenantId);
     res.status(204).send();
   } catch (error) {
     console.error('Error deleting order:', error);
@@ -181,10 +219,16 @@ const deleteOrder = async (req, res) => {
 
 const getOrderProgressDetails = async (req, res) => {
   try {
+    const tenantId = req.user.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant ID is required' });
+    }
+    
     const { id } = req.params;
-    const progress = await orderService.getProgressDetails(id);
+    const progress = await orderService.getProgressDetails(id, tenantId);
     res.json(progress);
   } catch (error) {
+    console.error('Error fetching progress details:', error);
     res.status(500).json({ error: 'Failed to fetch progress details' });
   }
 };
